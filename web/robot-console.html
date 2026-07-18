@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1316">
+<title>機体コンソール</title>
+<!-- roslib はローカル同梱（会場のPi-APはネット無しのためCDN不可）。同じフォルダに roslib.min.js を置く -->
+<script src="./roslib.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1316; --panel:#151d22; --panel2:#1b252b; --line:#26333a;
+    --txt:#e6eaec; --muted:#8a969c;
+    --ok:#3fb89a; --warn:#efa23a; --bad:#e2503f; --live:#efa23a;
+    --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);
+    overscroll-behavior:none;touch-action:manipulation}
+  body{max-width:760px;margin:0 auto;padding:10px 12px 28px;display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:8px;align-items:center}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:var(--mono)}
+
+  /* connection bar */
+  #conn{justify-content:space-between;flex-wrap:wrap;gap:8px}
+  #conn .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);flex:none}
+  #conn.on .dot{background:var(--ok)}
+  #conn input{flex:1;min-width:140px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+  button{font-family:var(--sans);font-size:14px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--txt);border-radius:8px;padding:9px 12px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .switch{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);user-select:none}
+  .switch input{appearance:none;width:34px;height:18px;border-radius:9px;background:var(--line);position:relative;outline:none;cursor:pointer}
+  .switch input:checked{background:var(--warn)}
+  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+  .switch input:checked::after{transform:translateX(16px)}
+
+  /* telemetry strip */
+  #tele{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .stat .v{font-family:var(--mono);font-size:20px;line-height:1.1;margin-top:3px}
+  #link .v{transition:color .2s}
+  .wheels{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .wheel{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 4px;text-align:center}
+  .wheel .a{font-family:var(--mono);font-size:15px;margin-top:2px}
+  .wheel.bad{border-color:var(--bad)}
+  .wheel .ok{font-size:10px;color:var(--ok)} .wheel.bad .ok{color:var(--bad)}
+
+  /* sticks */
+  #sticks{display:flex;gap:10px;flex-wrap:wrap}
+  .stickwrap{flex:1 1 200px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .pad{position:relative;width:100%;max-width:240px;aspect-ratio:1/1;border-radius:50%;
+    background:radial-gradient(circle at 50% 50%,var(--panel2),var(--panel));border:1px solid var(--line);touch-action:none}
+  .pad::before{content:"";position:absolute;inset:50% 8px auto 8px;height:1px;background:var(--line)}
+  .pad::after{content:"";position:absolute;inset:8px auto 8px 50%;width:1px;background:var(--line)}
+  .knob{position:absolute;width:30%;height:30%;left:35%;top:35%;border-radius:50%;
+    background:var(--live);box-shadow:0 0 0 4px rgba(239,162,58,.15);will-change:transform}
+  .axisread{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+  /* commands */
+  #cmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .cmd{padding:14px 10px;font-size:15px;background:var(--panel2);border:1px solid var(--line)}
+  .cmd:active{border-color:var(--warn);color:var(--warn)}
+
+  /* estop */
+  #estop{width:100%;padding:18px;font-size:18px;font-weight:500;letter-spacing:.04em;
+    background:#3a1714;border:1px solid var(--bad);color:#ff8a78;border-radius:12px}
+  #estop.latched{background:var(--bad);color:#fff;border-color:#ff8a78}
+  .hint{font-size:11px;color:var(--muted);text-align:center}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="conn" class="panel row">
+  <span class="dot"></span>
+  <input id="url" value="ws://192.168.4.1:9090" inputmode="url" spellcheck="false">
+  <button id="btnConn">接続</button>
+  <label class="switch"><input type="checkbox" id="demo" checked>デモ</label>
+</div>
+
+<div id="tele">
+  <div class="stat"><div class="lbl">バッテリ</div><div class="v" id="vbat">--.- V</div></div>
+  <div class="stat"><div class="lbl">状態</div><div class="v mono" id="state" style="font-size:15px">—</div></div>
+  <div class="stat" id="link"><div class="lbl">リンク鮮度</div><div class="v" id="age">--- ms</div></div>
+</div>
+
+<div class="panel">
+  <div class="lbl" style="margin-bottom:6px">各輪</div>
+  <div class="wheels" id="wheels"></div>
+</div>
+
+<div id="sticks">
+  <div class="stickwrap">
+    <div class="lbl">並進 (x / y)</div>
+    <div class="pad" id="padL"><div class="knob" id="knobL"></div></div>
+    <div class="axisread" id="readL">x 0.00  y 0.00</div>
+  </div>
+  <div class="stickwrap">
+    <div class="lbl">旋回 (ωz)</div>
+    <div class="pad" id="padR"><div class="knob" id="knobR"></div></div>
+    <div class="axisread" id="readR">ω 0.00</div>
+  </div>
+</div>
+
+<div class="row" style="justify-content:space-between">
+  <span class="pill" id="gpad">🎮 コントローラ未接続</span>
+  <span class="pill mono" id="rate">0 Hz</span>
+</div>
+
+<div id="cmds"></div>
+
+<button id="estop">⛔ 非常停止</button>
+<div class="hint">画面の非常停止は補助です。機体側の物理E-stopを必ず残してください。</div>
+
+<script>
+// ===== 設定（ここを機体側に合わせて編集） =====
+const CFG = {
+  cmdVelTopic:  '/cmd_vel',                 messageTwist: 'geometry_msgs/msg/Twist',
+  commandTopic: '/robot/command',           messageString:'std_msgs/msg/String',
+  telemTopic:   '/robot/telemetry',         // std_msgs/String の中身は JSON
+  rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
+  maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
+  commands: [
+    {id:'align',  label:'自動寄せ'},
+    {id:'home',   label:'ホーム復帰'},
+    {id:'deploy', label:'機構展開'},
+    {id:'reset',  label:'リセット'},
+  ],
+  // telemetry JSON 例: {"vbat":23.8,"state":"MANUAL","wheels":[{"angle":12.3,"ok":true}, ...]}
+};
+
+const $=s=>document.querySelector(s);
+let ros=null, connected=false;
+let drive={x:0,y:0,wz:0}, estop=false, lastTelem=0, pubCount=0;
+let cmdVel=null, cmdStr=null, telem=null;
+const demo=()=>$('#demo').checked;
+
+// ---- コマンドボタン生成 ----
+const cmdBox=$('#cmds');
+CFG.commands.forEach(c=>{
+  const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
+  b.onclick=()=>sendCommand(c.id);
+  cmdBox.appendChild(b);
+});
+// ---- 各輪セル生成 ----
+const wbox=$('#wheels');
+for(let i=0;i<4;i++){
+  const d=document.createElement('div'); d.className='wheel';
+  d.innerHTML=`<div class="lbl">W${i+1}</div><div class="a">--°</div><div class="ok">OK</div>`;
+  wbox.appendChild(d);
+}
+
+// ===== ジョイスティック =====
+function makeStick(padId,knobId,onMove,mode){
+  const pad=$(padId),knob=$(knobId); let id=null;
+  const set=(nx,ny)=>{ knob.style.transform=`translate(${nx*55}%,${ny*55}%)`; onMove(nx,ny); };
+  const fromEvt=e=>{
+    const r=pad.getBoundingClientRect();
+    let nx=((e.clientX-r.left)/r.width-.5)*2, ny=((e.clientY-r.top)/r.height-.5)*2;
+    const m=Math.hypot(nx,ny); if(m>1){nx/=m;ny/=m;}
+    if(mode==='x') ny=0; set(nx,ny);
+  };
+  pad.addEventListener('pointerdown',e=>{id=e.pointerId;pad.setPointerCapture(id);fromEvt(e);});
+  pad.addEventListener('pointermove',e=>{if(e.pointerId===id)fromEvt(e);});
+  const up=e=>{if(e.pointerId===id){id=null;set(0,0);}};
+  pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up);
+  return {reset:()=>set(0,0), setVisual:(nx,ny)=>{knob.style.transform=`translate(${nx*55}%,${ny*55}%)`;}};
+}
+const stickL=makeStick('#padL','#knobL',(x,y)=>{ if(!gpadActive){drive.x=-y; drive.y=-x;
+  $('#readL').textContent=`x ${(-y).toFixed(2)}  y ${(-x).toFixed(2)}`;} },'xy');
+const stickR=makeStick('#padR','#knobR',(x,y)=>{ if(!gpadActive){drive.wz=-x;
+  $('#readR').textContent=`ω ${(-x).toFixed(2)}`;} },'x');
+
+// ===== Gamepad（PS4等）=====
+let gpadActive=false;
+function pollGamepad(){
+  const gp=(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g);
+  if(gp){
+    gpadActive=true; $('#gpad').textContent='🎮 '+gp.id.slice(0,22);
+    const dz=v=>Math.abs(v)<0.08?0:v;
+    const lx=dz(gp.axes[0]||0), ly=dz(gp.axes[1]||0), rx=dz(gp.axes[2]||0);
+    drive.x=-ly; drive.y=-lx; drive.wz=-rx;
+    stickL.setVisual(lx,ly); stickR.setVisual(rx,0);
+    $('#readL').textContent=`x ${(-ly).toFixed(2)}  y ${(-lx).toFixed(2)}`;
+    $('#readR').textContent=`ω ${(-rx).toFixed(2)}`;
+    // ○△□× をコマンド0..3に割当（任意）
+    CFG.commands.forEach((c,i)=>{ if(gp.buttons[i]&&gp.buttons[i].pressed&&!c._h){c._h=1;sendCommand(c.id);} else if(gp.buttons[i]&&!gp.buttons[i].pressed)c._h=0; });
+  }else if(gpadActive){ gpadActive=false; $('#gpad').textContent='🎮 コントローラ未接続'; }
+}
+addEventListener('gamepadconnected',pollGamepad);
+
+// ===== ROS 接続 =====
+function connect(){
+  if(typeof ROSLIB==='undefined'){ alert('roslib.min.js が見つかりません。HTMLと同じフォルダに置いてください。今はデモのまま動作します。'); return; }
+  disconnect();
+  ros=new ROSLIB.Ros({url:$('#url').value.trim()});
+  ros.on('connection',()=>{ connected=true; $('#conn').classList.add('on'); $('#btnConn').textContent='切断';
+    cmdVel=new ROSLIB.Topic({ros,name:CFG.cmdVelTopic,messageType:CFG.messageTwist});
+    cmdStr=new ROSLIB.Topic({ros,name:CFG.commandTopic,messageType:CFG.messageString});
+    telem =new ROSLIB.Topic({ros,name:CFG.telemTopic,messageType:CFG.messageString});
+    telem.subscribe(m=>{ try{applyTelem(JSON.parse(m.data)); lastTelem=performance.now();}catch(e){} });
+  });
+  ros.on('error',()=>{}); 
+  ros.on('close',()=>{ connected=false; $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; });
+}
+function disconnect(){ if(ros){try{ros.close();}catch(e){}} ros=null; connected=false;
+  $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; }
+$('#btnConn').onclick=()=>{ connected?disconnect():connect(); };
+
+function sendCommand(id){
+  flash(id);
+  if(connected && !demo() && cmdStr) cmdStr.publish(new ROSLIB.Message({data:id}));
+  if(demo()) demoLog(id);
+}
+function flash(id){ /* 視覚フィードバックは押下時のCSSで処理 */ }
+
+// ===== 送出ループ（ハートビート兼）=====
+setInterval(()=>{
+  pollGamepad();
+  const v = estop ? {x:0,y:0,wz:0} : drive;
+  if(connected && !demo() && cmdVel){
+    cmdVel.publish(new ROSLIB.Message({
+      linear:{x:v.x*CFG.maxLin, y:v.y*CFG.maxLin, z:0},
+      angular:{x:0,y:0,z:v.wz*CFG.maxAng}
+    }));
+    pubCount++;
+  }
+}, 1000/CFG.rateHz);
+
+setInterval(()=>{ $('#rate').textContent=pubCount+' Hz'; pubCount=0; }, 1000);
+
+// ===== リンク鮮度（デッドマン可視化）=====
+setInterval(()=>{
+  const age = lastTelem? performance.now()-lastTelem : 99999;
+  const el=$('#age'); el.textContent = age>9999?'-- ms':Math.round(age)+' ms';
+  el.style.color = age<300?'var(--ok)':age<800?'var(--warn)':'var(--bad)';
+}, 100);
+
+// ===== テレメトリ描画 =====
+function applyTelem(t){
+  if(t.vbat!=null) $('#vbat').textContent=Number(t.vbat).toFixed(1)+' V';
+  if(t.state!=null) $('#state').textContent=t.state;
+  if(Array.isArray(t.wheels)){
+    [...wbox.children].forEach((w,i)=>{ const d=t.wheels[i]||{};
+      w.querySelector('.a').textContent=(d.angle!=null?Number(d.angle).toFixed(0):'--')+'°';
+      w.classList.toggle('bad', d.ok===false);
+    });
+  }
+}
+
+// ===== E-stop =====
+$('#estop').onclick=()=>{ estop=!estop; $('#estop').classList.toggle('latched',estop);
+  $('#estop').textContent=estop?'⛔ 停止中 — 解除':'⛔ 非常停止';
+  if(connected&&!demo()&&cmdStr) cmdStr.publish(new ROSLIB.Message({data:estop?'estop':'release'})); };
+
+// ===== デモ（rosbridge無しで端末UIを検証）=====
+let demoState=['MANUAL','ALIGN','MANUAL','HOME'], dsi=0, vb=24.0, ang=[0,0,0,0];
+setInterval(()=>{
+  if(!demo()) return;
+  vb=Math.max(20, vb-0.003+(Math.random()-0.5)*0.02);
+  ang=ang.map(a=>a+(Math.random()-0.5)*6);
+  applyTelem({vbat:vb, state:estop?'ESTOP':demoState[dsi], wheels:ang.map((a,i)=>({angle:a,ok:i!==2||vb>21}))});
+  lastTelem=performance.now();
+}, 120);
+setInterval(()=>{ if(demo()) dsi=(dsi+1)%demoState.length; }, 4000);
+function demoLog(id){ const s=$('#state'); const prev=s.textContent; s.textContent='▶ '+id; setTimeout(()=>{if(s.textContent==='▶ '+id)s.textContent=prev;},700); }
+</script>
+</body>
+</html>
