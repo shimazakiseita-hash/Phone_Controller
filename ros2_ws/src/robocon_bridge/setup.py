@@ -21,7 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mock_node = robocon_bridge.mock_node:main',
-            'can_bridge_node = robocon_bridge.can_bridge_node:main',
+            'cmd_vel_to_joy = robocon_bridge.cmd_vel_to_joy:main',
         ],
     },
 )

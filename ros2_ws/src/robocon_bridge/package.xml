@@ -3,13 +3,14 @@
 <package format="3">
   <name>robocon_bridge</name>
   <version>0.0.1</version>
-  <description>ROS2 bridge node for robocon manual robot — rosbridge gateway and CAN relay</description>
+  <description>ROS2 bridge node for robocon manual robot — rosbridge gateway and cmd_vel-to-Joy bridge</description>
   <maintainer email="shimazakiseita@gmail.com">Seita Shimazaki</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
 
   <buildtool_depend>ament_python</buildtool_depend>
   <test_depend>ament_copyright</test_depend>

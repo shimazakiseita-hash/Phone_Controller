@@ -1,23 +1,22 @@
 # ロボコン手動機 操縦コンソール
 
-スマホ(roslibjs) ⇄ rosbridge ⇄ ROS2(Raspberry Pi 5) ⇄ CAN-FD ⇄ STM32(HAL)
+スマホ(roslibjs) ⇄ rosbridge ⇄ ROS2(Raspberry Pi 5) ⇄ /joy ⇄ [チーム側] pscon_node → can_node → SPI → クラシックCAN 500kbps → STM32(HAL)
+
+本リポジトリの担当範囲は `/joy` publish まで。CANブリッジは自作せず、チーム側の実装に乗る。
 
 ## 前提
 
-- ROS2 Humble（Pi: Ubuntu 22.04）または Jazzy（開発PC: Ubuntu 24.04）
+- ROS2 Jazzy（Ubuntu 24.04）
 - rosbridge インストール済み
 
 ```bash
-# Humble
-sudo apt install ros-humble-rosbridge-suite
-# Jazzy
 sudo apt install ros-jazzy-rosbridge-suite
 ```
 
 ## セットアップ
 
 ```bash
-cd ~/CITRobocon/robocon-console/ros2_ws
+cd ~/CITRobocon/Phone_Controller/ros2_ws
 colcon build --packages-select robocon_bridge
 source install/setup.bash
 ```
@@ -28,7 +27,7 @@ source install/setup.bash
 ros2 launch robocon_bridge bringup.launch.py
 ```
 
-rosbridge(ws://0.0.0.0:9090) と mock_node が同時に起動します。
+rosbridge(ws://0.0.0.0:9090)・mock_node・cmd_vel_to_joy が同時に起動します。
 
 待ち受け確認：
 
@@ -56,19 +55,21 @@ ros2 topic pub --once /robot/command std_msgs/msg/String '{data: "align"}'
 # cmd_vel 送信テスト
 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
   '{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.1}}'
+
+# joy 変換確認（cmd_vel→joy が正しく変換されているか）
+ros2 topic echo /joy
 ```
 
 ## リポジトリ構成
 
 ```
-robocon-console/
+Phone_Controller/
 ├── web/robot-console.html              # スマホ HMI
-├── ros2_ws/src/robocon_bridge/
-│   ├── robocon_bridge/
-│   │   ├── mock_node.py                # 擬似テレメトリ＋コマンド受信ログ
-│   │   └── can_bridge_node.py          # CAN ⇄ トピック中継（CAN確定後）
-│   └── launch/bringup.launch.py        # rosbridge + ノード一括起動
-└── firmware/                           # STM32 HAL 側（後段）
+└── ros2_ws/src/robocon_bridge/
+    ├── robocon_bridge/
+    │   ├── mock_node.py                # 擬似テレメトリ＋コマンド受信ログ
+    │   └── cmd_vel_to_joy.py           # cmd_vel ⇄ joy 変換（チーム側 pscon_node への入口）
+    └── launch/bringup.launch.py        # rosbridge + ノード一括起動
 ```
 
 ## トピック契約
@@ -78,3 +79,4 @@ robocon-console/
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横, angular.z=旋回。20Hz |
 | `/robot/command` | `std_msgs/msg/String` | 端末→機体 | `align` / `home` / `deploy` / `reset` / `estop` / `release` |
 | `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON ~10Hz。`{"vbat":23.8,"state":"MANUAL","wheels":[...]}` |
+| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。axes 7要素以上・buttons 8要素以上必須。axes[1]=前後, axes[0]=横, axes[3]=旋回 |
