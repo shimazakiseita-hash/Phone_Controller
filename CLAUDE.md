@@ -17,7 +17,7 @@
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横移動, angular.z=旋回。**20Hzで送出（=デッドマンのハートビート）** |
 | `/robot/command` | `std_msgs/msg/String` | 端末→機体 | 半自動トリガー。`align` / `home` / `deploy` / `reset` / `estop` / `release` |
 | `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON文字列。~10Hz。例: `{"vbat":23.8,"state":"MANUAL","wheels":[{"angle":12.3,"ok":true}, ... ×4]}` |
-| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。`axes` 7要素以上・`buttons` 8要素以上が必須（pscon_node側の要件）。axes[1]=前後, axes[0]=横, axes[3]=旋回（PS4標準位置）。buttonsは現状ダミー（常に0）。 |
+| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。`pscon_node`（torobo2026_ros2_rp）の実装に合わせる: `axes[4]`=linear.x(st_ry), `axes[3]`=linear.y(st_rx), `axes[6]`=angular.zの符号のみ(-1/0/1, cross_bt)。`axes` 7要素以上・`buttons` 8要素以上が必須（`axes[6]`と`buttons[7]`にアクセスするため）。buttonsはpscon_node側で受信直後に全て0上書きされるため常にダミー(0)。 |
 
 ## 安全則（不変条件）
 - **デッドマン**: STM32は200ms以内に有効な走行コマンドが来なければモーター停止。

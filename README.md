@@ -79,4 +79,4 @@ Phone_Controller/
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横, angular.z=旋回。20Hz |
 | `/robot/command` | `std_msgs/msg/String` | 端末→機体 | `align` / `home` / `deploy` / `reset` / `estop` / `release` |
 | `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON ~10Hz。`{"vbat":23.8,"state":"MANUAL","wheels":[...]}` |
-| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。axes 7要素以上・buttons 8要素以上必須。axes[1]=前後, axes[0]=横, axes[3]=旋回 |
+| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。pscon_node実装に合わせ axes[4]=linear.x(st_ry), axes[3]=linear.y(st_rx), axes[6]=angular.zの符号のみ(-1/0/1)。axes 7要素以上・buttons 8要素以上必須 |

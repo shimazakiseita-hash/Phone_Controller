@@ -6,10 +6,13 @@ from sensor_msgs.msg import Joy
 AXES_SIZE = 8
 BUTTONS_SIZE = 8
 
-# PS4標準レイアウト: 左スティック(0=横,1=前後), 右スティック(3=旋回)
-AXIS_STRAFE = 0
-AXIS_FORWARD = 1
-AXIS_TURN = 3
+# torobo2026_ros2_rp/pscon_node.cpp の実装に合わせる:
+# axes[3]=st_rx, axes[4]=st_ry, axes[6]=cross_bt(-1/0/1のみ判定、連続値不可)
+AXIS_ST_RX = 3
+AXIS_ST_RY = 4
+AXIS_CROSS_BT = 6
+
+TURN_DEADZONE = 0.1
 
 
 class CmdVelToJoyNode(Node):
@@ -23,9 +26,12 @@ class CmdVelToJoyNode(Node):
         joy = Joy()
         joy.header.stamp = self.get_clock().now().to_msg()
         joy.axes = [0.0] * AXES_SIZE
-        joy.axes[AXIS_FORWARD] = msg.linear.x
-        joy.axes[AXIS_STRAFE] = msg.linear.y
-        joy.axes[AXIS_TURN] = msg.angular.z
+        joy.axes[AXIS_ST_RY] = msg.linear.x
+        joy.axes[AXIS_ST_RX] = msg.linear.y
+        if msg.angular.z > TURN_DEADZONE:
+            joy.axes[AXIS_CROSS_BT] = 1.0
+        elif msg.angular.z < -TURN_DEADZONE:
+            joy.axes[AXIS_CROSS_BT] = -1.0
         joy.buttons = [0] * BUTTONS_SIZE
         self._joy_pub.publish(joy)
 
