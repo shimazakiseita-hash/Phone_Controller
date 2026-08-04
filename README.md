@@ -27,7 +27,7 @@ source install/setup.bash
 ros2 launch robocon_bridge bringup.launch.py
 ```
 
-rosbridge(ws://0.0.0.0:9090)・mock_node・cmd_vel_to_joy が同時に起動します。
+rosbridge(ws://0.0.0.0:9090)・mock_node・cmd_vel_to_joy・nav_node が同時に起動します。
 
 待ち受け確認：
 
@@ -60,15 +60,61 @@ ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
 ros2 topic echo /joy
 ```
 
+### cmd_vel_to_joy の安全ゲート確認
+
+`cmd_vel_to_joy` は `/cmd_vel`(軸) と `/robot/command`(ボタン) をマージして `/joy` を20Hz固定で publish する。
+`ros2 topic echo /joy` を別ターミナルで実行しながら以下を確認する。
+
+```bash
+# ① ボタンパルス確認: axes を出し続けている状態で command を送ると、対応する buttons[index] が
+#    約150ms(3フレーム分)だけ1になり、その後自動的に0へ戻ることを確認
+ros2 topic pub -r 20 /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}' &
+ros2 topic pub --once /robot/command std_msgs/msg/String '{data: "checkpoint"}'   # buttons[2] が一瞬1になる
+kill %1
+
+# ② デッドマン確認: cmd_vel の送出を止めて200ms待つと、axes が全0になることを確認
+#    （上のバックグラウンド送出を止めた直後の /joy を echo で見る）
+
+# ③ estop ラッチ確認: estop 送信後は cmd_vel を送り続けても axes/buttons が全0のままになり、
+#    release を送るまで解除されないことを確認
+ros2 topic pub --once /robot/command std_msgs/msg/String '{data: "estop"}'
+ros2 topic pub --once /robot/command std_msgs/msg/String '{data: "release"}'
+
+# ④ 機構手動ジョグ確認: linear.z/angular.xを継続送出している間だけ buttons[4..7]が1になり、
+#    止めると0に戻ることを確認（buttons[0..3]のパルスと違い、送り続けている間ずっと1）
+ros2 topic pub -r 20 /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.0, y: 0.0, z: 1.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}'   # buttons[4](アーム+)が1になり続ける
+```
+
+### nav_node の状態遷移確認（運動学は未実装、配線のみ）
+
+```bash
+ros2 topic echo /robot/nav_state   # 別ターミナルで実行しながら以下を確認
+
+# ① goal受信でactiveになることを確認: nav_state が manual → auto に変わる
+ros2 topic pub --once /robot/goal geometry_msgs/msg/PoseStamped \
+  '{header: {frame_id: "map"}, pose: {position: {x: 1.0, y: 1.0, z: 0.0}}}'
+
+# ② goal_cancel でmanualへ戻ることを確認
+ros2 topic pub --once /robot/goal_cancel std_msgs/msg/Bool '{data: true}'
+
+# ③ 到達判定確認: telemetry の pose を goal に近づけると自動でmanualへ戻る
+#   （mock_node は固定のダミーpose推定を持たないため、実機 or 独自スクリプトで
+#    /robot/telemetry に goalに近いpose入りJSONを流して確認する）
+```
+
 ## リポジトリ構成
 
 ```
 Phone_Controller/
 ├── web/robot-console.html              # スマホ HMI
+├── firmware/CAN_COMMAND_SPEC.md        # STM32ファーム向けCANコマンド仕様書（本リポジトリはコード実装せず仕様のみ）
 └── ros2_ws/src/robocon_bridge/
     ├── robocon_bridge/
     │   ├── mock_node.py                # 擬似テレメトリ＋コマンド受信ログ
-    │   └── cmd_vel_to_joy.py           # cmd_vel ⇄ joy 変換（チーム側 pscon_node への入口）
+    │   ├── cmd_vel_to_joy.py           # cmd_vel ⇄ joy 変換（チーム側 pscon_node への入口）
+    │   └── nav_node.py                 # /robot/goal → go-to-point走行の状態遷移骨格（運動学は未実装）
     └── launch/bringup.launch.py        # rosbridge + ノード一括起動
 ```
 
@@ -76,7 +122,10 @@ Phone_Controller/
 
 | トピック | 型 | 向き | 内容 |
 |---|---|---|---|
-| `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横, angular.z=旋回。20Hz |
-| `/robot/command` | `std_msgs/msg/String` | 端末→機体 | `align` / `home` / `deploy` / `reset` / `estop` / `release` |
+| `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横, angular.z=旋回。20Hz。加えて linear.z=アームジョグ, angular.x=仰角ジョグ（-1/0/+1、ホールドで動作） |
+| `/robot/command` | `std_msgs/msg/String` | 端末→機体 | 全機構コマンドはエッジ（モーメンタリ）で統一。`launch`(射出) / `intake`(回収) / `checkpoint`(関所配置) / `gate`(城門配置) / `estop` / `release` |
 | `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON ~10Hz。`{"vbat":23.8,"state":"MANUAL","wheels":[...]}` |
-| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。pscon_node実装に合わせ axes[4]=linear.x(st_ry), axes[3]=linear.y(st_rx), axes[6]=angular.zの符号のみ(-1/0/1)。axes 7要素以上・buttons 8要素以上必須 |
+| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel`(軸)と`/robot/command`(ボタン)をマージして20Hz固定でpublish。pscon_node実装に合わせ axes[4]=linear.x(st_ry), axes[3]=linear.y(st_rx), axes[6]=angular.zの符号のみ(-1/0/1)。buttons[0..3]は`/robot/command`のidに対応するindexが約150msだけ1になるエッジパルス（`launch`→0, `intake`→1, `checkpoint`→2, `gate`→3。`cmd_vel_to_joy.py`の`COMMAND_BUTTON_MAP`定数）。buttons[4..7]は`/cmd_vel`のlinear.z/angular.x由来のホールド値（機構手動ジョグ。4=アーム+, 5=アーム-, 6=仰角+, 7=仰角-）。axes/buttons とも8要素固定。デッドマン(最後の`/cmd_vel`から200ms超で全0)と`estop`/`release`ラッチによる安全ゲートあり |
+| `/robot/goal` | `geometry_msgs/msg/PoseStamped` | 端末→機体 | 自陣拡大マップのタップ地点(`frame_id='map'`, pose座標系)。受信で`nav_node`がgo-to-pointをアクティブ化（運動学は未実装） |
+| `/robot/goal_cancel` | `std_msgs/msg/Bool` | 端末→機体 | `/robot/goal`のキャンセル。「移動キャンセル」ボタン、またはスティック入力再開時に送出 |
+| `/robot/nav_state` | `std_msgs/msg/String` | 機体→端末 | `nav_node`の走行モード。`manual` / `auto` |

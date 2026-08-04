@@ -14,10 +14,17 @@
 ## トピック契約（インターフェース。実装はこれに従う）
 | トピック | 型 | 向き | 内容 |
 |---|---|---|---|
-| `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横移動, angular.z=旋回。**20Hzで送出（=デッドマンのハートビート）** |
-| `/robot/command` | `std_msgs/msg/String` | 端末→機体 | 半自動トリガー。`align` / `home` / `deploy` / `reset` / `estop` / `release` |
-| `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON文字列。~10Hz。例: `{"vbat":23.8,"state":"MANUAL","wheels":[{"angle":12.3,"ok":true}, ... ×4]}` |
-| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel` を変換して publish。`pscon_node`（torobo2026_ros2_rp）の実装に合わせる: `axes[4]`=linear.x(st_ry), `axes[3]`=linear.y(st_rx), `axes[6]`=angular.zの符号のみ(-1/0/1, cross_bt)。`axes` 7要素以上・`buttons` 8要素以上が必須（`axes[6]`と`buttons[7]`にアクセスするため）。buttonsはpscon_node側で受信直後に全て0上書きされるため常にダミー(0)。 |
+| `/cmd_vel` | `geometry_msgs/msg/Twist` | 端末→機体 | linear.x=前後, linear.y=横移動, angular.z=旋回。**20Hzで送出（=デッドマンのハートビート）**。加えて`linear.z`=アームジョグ, `angular.x`=仰角ジョグ（-1/0/+1、ホールドで動作・離すと停止。機構手動操作用に流用。新規トピックは増やさずデッドマン/E-stopの安全ゲートに同乗させる） |
+| `/robot/command` | `std_msgs/msg/String` | 端末→機体 | 半自動トリガー。全機構コマンドは「1ボタン=定型シーケンス起動」のエッジ（モーメンタリ、ホールド無し）で統一。`launch`(射出) / `intake`(回収) / `checkpoint`(関所配置) / `gate`(城門配置) / `estop` / `release` |
+| `/robot/telemetry` | `std_msgs/msg/String` | 機体→端末 | JSON文字列。~10Hz。例: `{"vbat":23.8,"state":"MANUAL","pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92,"wheels":[{"angle":12.3,"ok":true}, ... ×4]}`。`pose`・`quality`は任意フィールド（下記注記参照）。`pose`は`nav_node`のgo-to-point到達判定にも使う。 |
+| `/joy` | `sensor_msgs/msg/Joy` | ROS2→チーム側 | `/cmd_vel`(軸)と`/robot/command`(ボタン)をマージして20Hz固定で publish。`pscon_node`（torobo2026_ros2_rp）の実装に合わせる: `axes[4]`=linear.x(st_ry), `axes[3]`=linear.y(st_rx), `axes[6]`=angular.zの符号のみ(-1/0/1, cross_bt)。`buttons[0..3]`は`/robot/command`のid→index(`launch`→0, `intake`→1, `checkpoint`→2, `gate`→3。`cmd_vel_to_joy.py`の`COMMAND_BUTTON_MAP`定数)に対応するindexが受信後約150ms(3フレーム)だけ1になるエッジパルス。`buttons[4..7]`は`/cmd_vel.linear.z`/`angular.x`由来のホールド値（機構手動ジョグ。`4`=アーム+, `5`=アーム-, `6`=仰角+, `7`=仰角-。`cmd_vel_to_joy.py`の`BUTTON_ARM_UP`等の定数）で、ホールドしている間だけ1、離すと0。`axes`・`buttons`とも8要素固定。**安全ゲート**: 最後の`/cmd_vel`から200ms超のデッドマン、および`estop`/`release`によるラッチで、いずれの停止条件でもaxes・buttons(0..7全て)を全0にする。CAN側のビット対応は`firmware/CAN_COMMAND_SPEC.md`参照。 |
+| `/robot/goal` | `geometry_msgs/msg/PoseStamped` | 端末→機体 | 移動コマンドB。フィールドマップの自陣拡大表示をタップした地点（`frame_id='map'`, pose座標系, m）。受信で`nav_node`がgo-to-point走行をアクティブ化する。運動学は未実装（`nav_node.py`のTODO）。 |
+| `/robot/goal_cancel` | `std_msgs/msg/Bool` | 端末→機体 | `/robot/goal`によるgo-to-point走行のキャンセル。「移動キャンセル」ボタン、またはスティック入力再開時（手動優先）に送出。 |
+| `/robot/nav_state` | `std_msgs/msg/String` | 機体→端末 | `nav_node`の走行モード。`manual` / `auto`。端末のモード表示に反映。 |
+
+`/robot/telemetry` の任意フィールド:
+- `pose`: `{x, y, theta}`。x, y は m、theta は rad。位置推定（自己位置）。省略可で、無くても他の表示（vbat/state/wheels等）に影響しない。**`web/robot-console.html` 実装済み**（テレメトリ上部の位置表示欄）。
+- `quality`: 0〜1の数値。`pose` 推定の健全性（信頼度）。省略可。**`web/robot-console.html` は現状未消費**（契約定義のみで、表示・警告への反映はまだ実装されていない）。
 
 ## 安全則（不変条件）
 - **デッドマン**: STM32は200ms以内に有効な走行コマンドが来なければモーター停止。
@@ -30,13 +37,15 @@
 Phone_Controller/
 ├─ CLAUDE.md
 ├─ web/robot-console.html              # スマホHMI（実装済み）
+├─ firmware/CAN_COMMAND_SPEC.md        # STM32ファーム向けCANコマンド仕様書（本リポジトリはコード実装せず仕様のみ）
 └─ ros2_ws/src/robocon_bridge/         # ROS2パッケージ (ament_python)
     ├─ robocon_bridge/
     │   ├─ mock_node.py                # ① 擬似テレメトリ＋cmd受信ログ（実機なしで端末検証）
-    │   └─ cmd_vel_to_joy.py           # ② /cmd_vel → /joy 変換（チーム側 pscon_node への入口）
+    │   ├─ cmd_vel_to_joy.py           # ② /cmd_vel → /joy 変換（チーム側 pscon_node への入口）
+    │   └─ nav_node.py                 # /robot/goal → go-to-point走行の状態遷移骨格（運動学は未実装）
     └─ launch/bringup.launch.py        # rosbridge + ノード
 ```
-STM32/CANまわり（pscon_node → can_node → SPI → クラシックCAN 500kbps → STM32）はチーム側の別リポジトリで管理。
+STM32/CANまわり（pscon_node → can_node → SPI → クラシックCAN 500kbps → STM32）はチーム側の別リポジトリで管理。CANペイロードの仕様は`firmware/CAN_COMMAND_SPEC.md`に記載。
 
 ## 環境
 - ROS2 **Jazzy**（Ubuntu 24.04）。
