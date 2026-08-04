@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'mock_node = robocon_bridge.mock_node:main',
             'cmd_vel_to_joy = robocon_bridge.cmd_vel_to_joy:main',
+            'nav_node = robocon_bridge.nav_node:main',
         ],
     },
 )

@@ -24,4 +24,11 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription([rosbridge, mock, cmd_vel_to_joy])
+    nav_node = Node(
+        package='robocon_bridge',
+        executable='nav_node',
+        name='nav_node',
+        output='screen',
+    )
+
+    return LaunchDescription([rosbridge, mock, cmd_vel_to_joy, nav_node])
