@@ -121,8 +121,14 @@
   .cmd{padding:14px 10px;font-size:15px;background:var(--panel2);border:1px solid var(--line)}
   .cmd:active{border-color:var(--warn);color:var(--warn)}
 
-  /* 機構手動ジョグ（ホールドで動作、離すと停止。1ボタン=シーケンスの#cmdsとは別系統） */
-  #jog{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  /* 手動フォールバック（パッド未接続時のみ表示） */
+  #fallbackCmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  #suctionBtn.on{background:var(--ok);color:#04211b;border-color:var(--ok)}
+  /* 機構手動ジョグ（アーム上下左右、ホールドで動作、離すと停止）。十字配置 */
+  #jog{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:8px;
+    grid-template-areas:". up ." "left down right"}
+  #jog [data-id=armUp]{grid-area:up} #jog [data-id=armDown]{grid-area:down}
+  #jog [data-id=armLeft]{grid-area:left} #jog [data-id=armRight]{grid-area:right}
   .jogbtn.jogging{border-color:var(--warn);color:var(--warn);background:#2a2013}
 
   /* estop: position:fixedは使わない。#scrollareaがflexの残り領域を専有してスクロールする一方、
@@ -255,8 +261,11 @@
 
     <div id="cmds"></div>
 
-    <div id="jogWrap" class="panel">
-      <div class="lbl" style="margin-bottom:6px">手動操作（ホールドで動作、離すと停止）</div>
+    <div id="fallbackWrap" class="panel">
+      <div class="lbl" style="margin-bottom:6px">手動フォールバック（パッド未接続時のみ）</div>
+      <div id="fallbackCmds"></div>
+      <button id="suctionBtn" style="width:100%;margin-top:8px">吸着 OFF</button>
+      <div class="lbl" style="margin:10px 0 6px">アーム（ホールドで動作、離すと停止）</div>
       <div id="jog"></div>
     </div>
   </div>
@@ -280,36 +289,47 @@ const CFG = {
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
-  // 全機構コマンドは「1ボタン=定型シーケンス起動」のエッジ（モーメンタリ）で統一。ホールド動作は無い。
+  // 半自動コマンド（画面・常時表示・エッジ）。パッド割り当ては無し（画面専用の配置作業のため）。
   commands: [
-    {id:'launch',     label:'射出'},
-    {id:'intake',     label:'回収'},
     {id:'checkpoint', label:'関所配置'},
     {id:'gate',       label:'城門配置'},
   ],
-  // ---- 機構手動ジョグ（ホールドで動作、離すと停止。上のcommandsとは別系統）----
-  // /cmd_vel の未使用フィールドに載せて送る（新規トピックは増やさず、本リポジトリ担当範囲の/joyへ
-  // 既存のデッドマン/E-stopゲートに乗せたまま流す）: linear.z=アーム, angular.x=仰角。
-  // cmd_vel_to_joy.py 側で /joy の buttons[4]=アーム+, [5]=アーム-, [6]=仰角+, [7]=仰角- に変換する。
-  // 画面タッチ専用（外部ゲームパッドの割り当ては無し）。
-  mechJog: [
-    {id:'armUp',     label:'アーム +', axis:'linear.z',  sign:+1},
-    {id:'armDown',   label:'アーム −', axis:'linear.z',  sign:-1},
-    {id:'angleUp',   label:'仰角 +',   axis:'angular.x', sign:+1},
-    {id:'angleDown', label:'仰角 −',   axis:'angular.x', sign:-1},
+  // 手動フォールバック・エッジ系（画面はパッド未接続時のみ表示。パッド接続中はCFG.gamepad.buttonsが担当）
+  fallbackCommands: [
+    {id:'launch', label:'射出'},
+    {id:'intake', label:'回収'},
   ],
-  // ---- Bluetoothゲームパッド関連。機種でaxes/buttonsの番号が違うのでここで合わせる ----
+  // 吸着（トグル）。画面ボタン・パッドRTのどちらで押しても同じON/OFF状態をトグルする。
+  suction: {id:'suction', label:'吸着'},
+  // ---- 機構手動ジョグ（アーム上下左右、ホールドで動作・離すと停止。ハンドは吸着式のため仰角は無い）----
+  // /cmd_vel の未使用フィールドに載せて送る（新規トピックは増やさず、本リポジトリ担当範囲の/joyへ
+  // 既存のデッドマン/E-stopゲートに乗せたまま流す）: linear.z=上下, angular.x=左右。
+  // cmd_vel_to_joy.py 側で /joy の buttons[4]=上, [5]=下, [6]=左, [7]=右 に変換する。
+  // 画面はパッド未接続時のみ表示（パッド接続中はCFG.gamepad.jogButtonsの十字キーが担当）。
+  mechJog: [
+    {id:'armUp',    label:'アーム ↑', axis:'linear.z',  sign:+1},
+    {id:'armDown',  label:'アーム ↓', axis:'linear.z',  sign:-1},
+    {id:'armLeft',  label:'アーム ←', axis:'angular.x', sign:+1},
+    {id:'armRight', label:'アーム →', axis:'angular.x', sign:-1},
+  ],
+  // ---- Bluetoothゲームパッド関連（X5 Lite, Switchモードで採取・確定済み）----
+  //   axes: [0]左スティックx [1]左スティックy [2]右スティックx [3]右スティックy
+  //         （y軸はGamepad API標準どおり上=負値なので、上=前進/上=正回転にしたい軸はinvert:trueで反転）
+  //   buttons: [0]A [1]B [2]X [3]Y [4]LB [5]RB [6]LT [7]RT [8]ビュー [9]メニュー
+  //            [10]左スティック押込 [11]右スティック押込 [12]上 [13]下 [14]左 [15]右 [16]ホーム
   gamepad: {
     deadzone: 0.08,                         // 起動時デフォルト（詳細設定パネルのスライダーで一時的に変更可）
     // axes: どのGamepad API axesを前後/左右/旋回に割り当てるか。invertで符号反転。
     axes: {
-      forward: {index: 1, invert: true},    // drive.x（前後）
-      strafe:  {index: 0, invert: true},    // drive.y（左右）
-      rotate:  {index: 2, invert: true},    // drive.wz（旋回）
+      forward: {index: 1, invert: true},    // drive.x（前後）＝左スティックy
+      strafe:  {index: 0, invert: true},    // drive.y（左右）＝左スティックx
+      rotate:  {index: 2, invert: true},    // drive.wz（旋回）＝右スティックx
     },
-    // buttons: CFG.commands の id → ボタン番号。押した瞬間のみ発火（押しっぱなし連射なし）。
-    // TODO: 実機コントローラでボタン採取後に番号を確定させる（現状はプレースホルダ）。
-    buttons: {launch:0, intake:1, checkpoint:2, gate:3},
+    // buttons: CFG.fallbackCommands の id → ボタン番号（エッジ）。checkpoint/gateはパッドから外し画面専用。
+    buttons: {launch:0, intake:1},          // A=射出 B=回収
+    suctionButton: 7,                       // RT。押すたびに吸着ON/OFFをトグル
+    // jogButtons: アーム4方向 → ボタン番号（ホールド）。十字キー(D-pad)を割り当て。
+    jogButtons: {armUp:12, armDown:13, armLeft:14, armRight:15},
   },
   // telemetry JSON 例:
   // {"vbat":23.8,"state":"MANUAL","pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92,
@@ -367,20 +387,38 @@ let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navS
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
 let zoomOn=false, goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（拡大タップ→goal）用
 const demo=()=>$('#demo').checked;
+let suctionOn=false;   // 吸着トグル状態。画面ボタン・パッドRTのどちらからでも同じ状態をトグルする
 
-// ---- コマンドボタン生成 ----
+// ---- 半自動コマンドボタン生成（常時表示。checkpoint/gate） ----
 const cmdBox=$('#cmds');
 CFG.commands.forEach(c=>{
   const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
   b.onclick=()=>sendCommand(c.id);
   cmdBox.appendChild(b);
 });
-// ---- 機構手動ジョグボタン生成（ホールドで動作。Pointer Captureで指が枠外に出ても離すまで確実に検知） ----
+// ---- 手動フォールバックボタン生成（launch/intake。パッド未接続時のみ表示、#fallbackWrapごと切替） ----
+const fallbackBox=$('#fallbackCmds');
+CFG.fallbackCommands.forEach(c=>{
+  const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
+  b.onclick=()=>sendCommand(c.id);
+  fallbackBox.appendChild(b);
+});
+// ---- 吸着トグルボタン ----
+function toggleSuction(){ suctionOn=!suctionOn; updateSuctionUI(); }
+function updateSuctionUI(){
+  const b=$('#suctionBtn');
+  b.classList.toggle('on',suctionOn);
+  b.textContent='吸着 '+(suctionOn?'ON':'OFF');
+}
+$('#suctionBtn').onclick=()=>toggleSuction();
+updateSuctionUI();
+// ---- 機構手動ジョグボタン生成（アーム上下左右。ホールドで動作。Pointer Captureで指が枠外に出ても離すまで確実に検知） ----
 const jogBox=$('#jog');
 const jogState={};
 CFG.mechJog.forEach(j=>{
   jogState[j.id]=false;
   const b=document.createElement('button'); b.className='cmd jogbtn'; b.textContent=j.label;
+  b.dataset.id=j.id;
   const press=ev=>{ ev.preventDefault(); try{b.setPointerCapture(ev.pointerId);}catch(e){}
     jogState[j.id]=true; b.classList.add('jogging'); };
   const release=()=>{ jogState[j.id]=false; b.classList.remove('jogging'); };
@@ -393,6 +431,8 @@ function jogAxisValue(axis){
   let v=0; CFG.mechJog.forEach(j=>{ if(j.axis===axis && jogState[j.id]) v+=j.sign; });
   return Math.max(-1,Math.min(1,v));
 }
+// ---- パッド接続状態で手動フォールバックパネル(launch/intake/吸着/アーム)の表示を切替 ----
+function updateFallbackVisibility(){ $('#fallbackWrap').style.display = gpadActive ? 'none' : ''; }
 // タブが非アクティブになった際にホールド状態が残留しないようにする（安全側フォールバック。
 // 実際の走行停止は cmd_vel_to_joy のデッドマン(200ms)が担保する）
 addEventListener('blur',()=>{ Object.keys(jogState).forEach(k=>jogState[k]=false);
@@ -491,17 +531,32 @@ function setGpadUI(on,name){
 }
 setGpadUI(false);
 
+let suctionBtnHeld=false;   // パッドRTのエッジ検知用（トグルなので押した瞬間だけ発火）
 function pollGamepad(){
   const gp=(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g);
+  const wasActive=gpadActive;
   if(gp){
     gpadActive=true; setGpadUI(true,gp.id);
     const fx=axisVal(gp,AX.forward), fy=axisVal(gp,AX.strafe), rz=axisVal(gp,AX.rotate);
     drive.x=fx; drive.y=fy; drive.wz=rz;
-    CFG.commands.forEach(c=>{
+    // 手動フォールバック・エッジ系（launch/intake）
+    CFG.fallbackCommands.forEach(c=>{
       const idx=BTN[c.id]; if(idx==null) return;
       const b=gp.buttons[idx]; if(!b) return;
       if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
       else if(!b.pressed){ btnHeld[c.id]=false; }
+    });
+    // 吸着トグル（RT）：押した瞬間だけtoggleSuction()を1回発火
+    { const sb=gp.buttons[CFG.gamepad.suctionButton];
+      if(sb){
+        if(sb.pressed && !suctionBtnHeld){ suctionBtnHeld=true; toggleSuction(); }
+        else if(!sb.pressed){ suctionBtnHeld=false; }
+      } }
+    // アーム4方向（十字キー）：ホールドしている間だけjogStateを立てる
+    Object.entries(CFG.gamepad.jogButtons).forEach(([id,idx])=>{
+      const b=gp.buttons[idx];
+      jogState[id]=!!(b && b.pressed);
+      $$('#jog .jogbtn').forEach(el=>{ if(el.dataset.id===id) el.classList.toggle('jogging',jogState[id]); });
     });
     if(advOpen){
       $('#dbgAxes').textContent = gp.axes.map((v,i)=>`[${i}] ${v.toFixed(2)}`).join('  ');
@@ -511,12 +566,17 @@ function pollGamepad(){
     gpadActive=false; setGpadUI(false);
     $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
   }
+  if(gpadActive!==wasActive) updateFallbackVisibility();
 }
 addEventListener('gamepadconnected',pollGamepad);
 addEventListener('gamepaddisconnected',()=>{
   gpadActive=false; drive={x:0,y:0,wz:0}; setGpadUI(false);
+  Object.keys(jogState).forEach(k=>jogState[k]=false);
+  $$('#jog .jogbtn').forEach(el=>el.classList.remove('jogging'));
   $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
+  updateFallbackVisibility();
 });
+updateFallbackVisibility();   // 初期表示（起動時点ではパッド未接続想定なのでフォールバックを表示）
 
 // ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
 // pose(推定側の座標系, rad) → フィールド座標(m, 原点左下)。CFG.teams[team].poseToField で機体/座標規約を吸収
@@ -778,12 +838,13 @@ setInterval(()=>{
     clearGoal(); sendGoalCancel();
   }
   const v = estop ? {x:0,y:0,wz:0} : drive;
-  const jz = estop ? 0 : jogAxisValue('linear.z');    // 機構手動ジョグ（アーム）
-  const jx = estop ? 0 : jogAxisValue('angular.x');   // 機構手動ジョグ（仰角）
+  const jz = estop ? 0 : jogAxisValue('linear.z');    // 機構手動ジョグ（アーム上下）
+  const jx = estop ? 0 : jogAxisValue('angular.x');   // 機構手動ジョグ（アーム左右）
+  const su = estop ? 0 : (suctionOn ? 1 : 0);         // 吸着（トグル状態。estop中は必ず0）
   if(connected && !demo() && cmdVel){
     cmdVel.publish(new ROSLIB.Message({
       linear:{x:v.x*CFG.maxLin, y:v.y*CFG.maxLin, z:jz},
-      angular:{x:jx,y:0,z:v.wz*CFG.maxAng}
+      angular:{x:jx,y:su,z:v.wz*CFG.maxAng}
     }));
     pubCount++;
   }
@@ -822,6 +883,7 @@ function applyTelem(t){
 // ===== E-stop =====
 $('#estop').onclick=()=>{ estop=!estop; $('#estop').classList.toggle('latched',estop);
   $('#estop').textContent=estop?'⛔ 停止中 — 解除':'⛔ 非常停止';
+  if(estop && suctionOn){ suctionOn=false; updateSuctionUI(); }   // estop時は吸着も強制解除（再開には再操作が必要）
   if(connected&&!demo()&&cmdStr) cmdStr.publish(new ROSLIB.Message({data:estop?'estop':'release'})); };
 
 // ===== デモ（rosbridge無しで端末UIを検証）=====
