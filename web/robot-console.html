@@ -18,12 +18,12 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);
     overscroll-behavior:none;touch-action:manipulation;height:100%}
-  /* body = ヘッダー無し / 中央スクロール領域 / 下部固定フッター(非常停止) の3段flex。
-     position:fixed は使わず、flexの残り領域だけをスクロールさせることでE-stopを常時可視に保つ */
+  /* body = ヘッダー無し / スクロール領域 のflex。position:fixedは使わず、
+     flexの残り領域だけをスクロールさせる構成 */
   body{max-width:760px;margin:0 auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px;
     height:100vh;height:100dvh;overflow:hidden}
   #scrollarea{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
-    -webkit-overflow-scrolling:touch}
+    -webkit-overflow-scrolling:touch;padding-bottom:max(0px,env(safe-area-inset-bottom))}
   .row{display:flex;gap:8px;align-items:center}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
   .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -48,18 +48,12 @@
   .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
   .switch input:checked::after{transform:translateX(16px)}
 
-  /* gamepad status bar（接続/切断＋入力ソースの明示） */
-  #gpadbar{justify-content:space-between}
-  #gpadbar .gpname{font-weight:600;font-size:14px;color:var(--muted)}
-  #gpadbar.on .gpname{color:var(--ok)}
-
   /* layout: iPhone横画面(landscape)を主対象に2カラムを基本とする。外部コントローラ専用でタッチ操作UIは持たない */
   .layout{display:flex;flex-direction:column;gap:10px}
   .top,.bottom{display:flex;flex-direction:column;gap:10px}
   @media (orientation:landscape){
     body{max-width:1280px}
     .layout{display:grid;grid-template-columns:0.8fr 1.6fr;align-items:start}
-    #tele{grid-template-columns:repeat(4,1fr)}
   }
 
   /* telemetry strip */
@@ -67,11 +61,6 @@
   .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
   .stat .v{font-family:var(--mono);font-size:20px;line-height:1.1;margin-top:3px}
   #link .v{transition:color .2s}
-  .wheels{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-  .wheel{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 4px;text-align:center}
-  .wheel .a{font-family:var(--mono);font-size:15px;margin-top:2px}
-  .wheel.bad{border-color:var(--bad)}
-  .wheel .ok{font-size:10px;color:var(--ok)} .wheel.bad .ok{color:var(--bad)}
 
   /* フィールドマップ（常時表示。外部コントローラ専用のためタッチスティックは無し） */
   #fieldTop{justify-content:space-between;margin-bottom:8px}
@@ -83,29 +72,6 @@
     background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   #fieldCanvasBox canvas{width:100%;height:100%;display:block}
 
-  /* 目標/得点パネル（実機通信とは独立、スマホ内stateのみ。半自動コマンドとは別パネル） */
-  #gameTop{justify-content:space-between;margin-bottom:8px}
-  #scoreVal{font-size:26px}
-  .gamerow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .gamerow>.lbl{min-width:52px;flex:none}
-  .chiprow{display:flex;gap:8px;flex:1}
-  .chipbtn{flex:1;padding:14px 6px;font-size:13px;font-weight:700;border-radius:9px;
-    background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
-  .chipbtn.on{background:var(--ok);color:#04211b;border-color:var(--ok)}
-  .counter{display:flex;align-items:center;gap:10px}
-  .ctrbtn{width:44px;height:44px;font-size:20px;padding:0;line-height:1;font-weight:700}
-  .ctrval{font-family:var(--mono);font-size:20px;min-width:2.4ch;text-align:center}
-  .blockrow{display:flex;gap:6px;flex:1}
-  .blockcell{flex:1;aspect-ratio:1/1;max-width:54px;border-radius:8px;background:var(--panel2);
-    border:1px solid var(--line);cursor:pointer;transition:background .1s}
-  .blockcell.down{background:var(--warn);border-color:var(--warn)}
-  .badge{padding:4px 10px;border-radius:999px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;flex:none}
-  #vgoalRow{gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:2px}
-  .vgitem.ok{color:var(--ok);font-weight:700}
-  #vgoalBanner{display:none;margin-top:8px;padding:12px;text-align:center;border-radius:10px;
-    font-weight:700;font-size:16px;background:#3a2f10;border:1px solid var(--warn);color:var(--warn)}
-  #gameReset{width:100%;margin-top:2px}
-
   /* 詳細設定／デバッグパネル（開閉式） */
   #advPanel summary{cursor:pointer;font-size:13px;color:var(--muted);list-style:none}
   #advPanel summary::-webkit-details-marker{display:none}
@@ -116,27 +82,20 @@
   .dbglist{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;padding:6px 8px;line-height:1.6;word-break:break-all}
 
+  /* ブランドロゴ（余ったスペースを埋める。画像は正方形JPGで円が縁いっぱいに内接しているので、
+     clip-pathで四隅の白背景だけを落として円バッジとして見せる） */
+  #brandWrap{flex:1 1 auto;min-height:60px;display:flex;align-items:center;justify-content:center;padding:6px 0}
+  #brandLogo{width:min(34%,120px);aspect-ratio:1/1;object-fit:cover;border-radius:50%;
+    clip-path:circle(49.5%);filter:drop-shadow(0 0 22px rgba(74,144,217,.35)) drop-shadow(0 0 2px rgba(0,0,0,.4));
+    opacity:.94}
+
   /* commands */
-  #cmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-  .cmd{padding:14px 10px;font-size:15px;background:var(--panel2);border:1px solid var(--line)}
-  .cmd:active{border-color:var(--warn);color:var(--warn)}
+  #cmds{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .cmd{padding:30px 12px;font-size:19px;font-weight:700;letter-spacing:.02em;border-radius:14px;
+    background:var(--c,var(--panel2));border:1px solid var(--c,var(--line));color:var(--c-fg,var(--txt))}
+  .cmd:active{transform:translateY(1px);filter:brightness(1.12)}
 
-  /* 手動フォールバック（パッド未接続時のみ表示） */
-  #fallbackCmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-  #suctionBtn.on{background:var(--ok);color:#04211b;border-color:var(--ok)}
-  /* 機構手動ジョグ（アーム上下左右、ホールドで動作、離すと停止）。十字配置 */
-  #jog{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:8px;
-    grid-template-areas:". up ." "left down right"}
-  #jog [data-id=armUp]{grid-area:up} #jog [data-id=armDown]{grid-area:down}
-  #jog [data-id=armLeft]{grid-area:left} #jog [data-id=armRight]{grid-area:right}
-  .jogbtn.jogging{border-color:var(--warn);color:var(--warn);background:#2a2013}
 
-  /* estop: position:fixedは使わない。#scrollareaがflexの残り領域を専有してスクロールする一方、
-     このフッターはflex:noneでbody(画面いっぱいのflex列)の最下段に常時居座る */
-  #estopWrap{flex:none;padding-bottom:max(0px,env(safe-area-inset-bottom))}
-  #estop{width:100%;padding:18px;font-size:18px;font-weight:500;letter-spacing:.04em;
-    background:#3a1714;border:1px solid var(--bad);color:#ff8a78;border-radius:12px}
-  #estop.latched{background:var(--bad);color:#fff;border-color:#ff8a78}
   .hint{font-size:11px;color:var(--muted);text-align:center}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -147,96 +106,22 @@
 
 <div id="conn" class="panel row">
   <span class="dot"></span>
-  <input id="url" value="ws://192.168.4.1:9090" inputmode="url" spellcheck="false">
+  <input id="url" value="ws://10.152.79.144:9090" inputmode="url" spellcheck="false">
   <button id="btnConn">接続</button>
   <label class="switch"><input type="checkbox" id="demo" checked>デモ</label>
-</div>
-
-<div id="gpadbar" class="panel row">
-  <span class="dot"></span>
-  <span class="gpname" id="gpadName">未接続</span>
-  <span class="pill" id="inputSrc" style="margin-left:auto">入力: なし</span>
 </div>
 
 <div class="layout">
   <div class="top">
     <div id="tele">
-      <div class="stat"><div class="lbl">バッテリ</div><div class="v" id="vbat">--.- V</div></div>
-      <div class="stat"><div class="lbl">状態</div><div class="v mono" id="state" style="font-size:15px">—</div></div>
       <div class="stat"><div class="lbl">位置 (x,y,θ)</div><div class="v mono" id="pose" style="font-size:14px">--</div></div>
       <div class="stat" id="link"><div class="lbl">リンク鮮度</div><div class="v" id="age">--- ms</div></div>
     </div>
-    <div class="panel">
-      <div class="lbl" style="margin-bottom:6px">各輪</div>
-      <div class="wheels" id="wheels"></div>
-    </div>
-  </div>
 
-  <div class="bottom">
-    <div id="fieldWrap" class="panel">
-      <div class="row" id="fieldTop">
-        <div class="lbl">フィールドマップ</div>
-        <div class="row" style="gap:6px;flex-wrap:wrap">
-          <button id="teamRed" class="teambtn">RED</button>
-          <button id="teamBlue" class="teambtn">BLUE</button>
-          <label class="switch" style="margin-left:4px"><input type="checkbox" id="trailToggle" checked>軌跡</label>
-          <label class="switch"><input type="checkbox" id="zoomToggle">自陣拡大</label>
-        </div>
-      </div>
-      <div class="row" id="navRow" style="justify-content:space-between;margin-bottom:6px">
-        <span class="pill mono" id="navMode">モード: 手動</span>
-        <button id="goalCancel">移動キャンセル</button>
-      </div>
-      <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
-      <div class="hint" id="tapHint" style="text-align:left;margin-top:4px">自陣拡大表示中はタップで目標地点へ移動指示（/robot/goal）</div>
-      <div class="hint" id="qualityHint" style="display:none;text-align:left;margin-top:4px">
-        自己位置の信頼度低下: <span id="qualityVal" class="mono">--</span>
-      </div>
-    </div>
+    <div id="cmds"></div>
 
-    <div id="gameWrap" class="panel">
-      <div class="row" id="gameTop">
-        <div class="lbl">目標 / 得点</div>
-        <div class="v mono" id="scoreVal">0</div>
-      </div>
-
-      <div class="gamerow">
-        <div class="lbl">関所</div>
-        <div class="chiprow" id="checkpointChips"></div>
-      </div>
-
-      <div class="gamerow">
-        <div class="lbl">城門</div>
-        <div class="counter">
-          <button class="ctrbtn" id="gateMinus">−</button>
-          <span class="ctrval" id="gateVal">0</span>
-          <button class="ctrbtn" id="gatePlus">+</button>
-        </div>
-      </div>
-
-      <div class="gamerow">
-        <div class="lbl">回収</div>
-        <div class="counter">
-          <button class="ctrbtn" id="collectMinus">−</button>
-          <span class="ctrval" id="collectVal">0</span>
-          <button class="ctrbtn" id="collectPlus">+</button>
-        </div>
-      </div>
-
-      <div class="gamerow">
-        <div class="lbl">城崩し</div>
-        <div class="blockrow" id="castleBlocksRow"></div>
-        <span class="badge" id="castleBadge" style="display:none">落城</span>
-      </div>
-
-      <div class="row" id="vgoalRow">
-        <span class="vgitem" id="vgCheckpoints">✗ 関所</span>
-        <span class="vgitem" id="vgGate">✗ 城門</span>
-        <span class="vgitem" id="vgCastle">✗ 落城</span>
-      </div>
-      <div id="vgoalBanner">🎌 あっぱれ！可</div>
-
-      <button id="gameReset">リセット</button>
+    <div class="row" style="justify-content:flex-end">
+      <span class="pill mono" id="rate">0 Hz</span>
     </div>
 
     <details id="advPanel" class="panel">
@@ -255,28 +140,35 @@
       </div>
     </details>
 
-    <div class="row" style="justify-content:flex-end">
-      <span class="pill mono" id="rate">0 Hz</span>
+    <div id="brandWrap">
+      <img src="./CITRobocon_image.jpg" alt="CIT Robocon" id="brandLogo">
     </div>
+  </div>
 
-    <div id="cmds"></div>
-
-    <div id="fallbackWrap" class="panel">
-      <div class="lbl" style="margin-bottom:6px">手動フォールバック（パッド未接続時のみ）</div>
-      <div id="fallbackCmds"></div>
-      <button id="suctionBtn" style="width:100%;margin-top:8px">吸着 OFF</button>
-      <div class="lbl" style="margin:10px 0 6px">アーム（ホールドで動作、離すと停止）</div>
-      <div id="jog"></div>
+  <div class="bottom">
+    <div id="fieldWrap" class="panel">
+      <div class="row" id="fieldTop">
+        <div class="lbl">フィールドマップ</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <button id="teamRed" class="teambtn">RED</button>
+          <button id="teamBlue" class="teambtn">BLUE</button>
+          <label class="switch" style="margin-left:4px"><input type="checkbox" id="trailToggle" checked>軌跡</label>
+        </div>
+      </div>
+      <div class="row" id="navRow" style="justify-content:space-between;margin-bottom:6px">
+        <span class="pill mono" id="navMode">モード: 手動</span>
+        <button id="goalCancel">移動キャンセル</button>
+      </div>
+      <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
+      <div class="hint" id="tapHint" style="text-align:left;margin-top:4px">タップで目標地点へ移動指示（/robot/goal）</div>
+      <div class="hint" id="qualityHint" style="display:none;text-align:left;margin-top:4px">
+        自己位置の信頼度低下: <span id="qualityVal" class="mono">--</span>
+      </div>
     </div>
   </div>
 </div>
 
 </div><!-- /#scrollarea -->
-
-<div id="estopWrap">
-  <button id="estop">⛔ 非常停止</button>
-  <div class="hint">画面の非常停止は補助です。機体側の物理E-stopを必ず残してください。</div>
-</div>
 
 <script>
 // ===== 設定（機種・機体に合わせてここを編集） =====
@@ -289,23 +181,18 @@ const CFG = {
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
-  // 半自動コマンド（画面・常時表示・エッジ）。パッド割り当ては無し（画面専用の配置作業のため）。
+  // 全機構コマンド（画面・常時表示・エッジ）。画面・外部パッド両方に余裕があるので4つとも両方に割り当てる。
   commands: [
-    {id:'checkpoint', label:'関所配置'},
-    {id:'gate',       label:'城門配置'},
+    {id:'launch',     label:'射出',     color:'#4d459b', colorFg:'#f2f0fa'},   // CITRoboconロゴ由来の紫
+    {id:'intake',     label:'回収',     color:'#4a90d9', colorFg:'#052033'},   // チームBLUE系の青
+    {id:'checkpoint', label:'関所配置', color:'#3fb89a', colorFg:'#04211b'},   // --ok
+    {id:'gate',       label:'城門配置', color:'#efa23a', colorFg:'#3a2400'},   // --warn
   ],
-  // 手動フォールバック・エッジ系（画面はパッド未接続時のみ表示。パッド接続中はCFG.gamepad.buttonsが担当）
-  fallbackCommands: [
-    {id:'launch', label:'射出'},
-    {id:'intake', label:'回収'},
-  ],
-  // 吸着（トグル）。画面ボタン・パッドRTのどちらで押しても同じON/OFF状態をトグルする。
-  suction: {id:'suction', label:'吸着'},
   // ---- 機構手動ジョグ（アーム上下左右、ホールドで動作・離すと停止。ハンドは吸着式のため仰角は無い）----
   // /cmd_vel の未使用フィールドに載せて送る（新規トピックは増やさず、本リポジトリ担当範囲の/joyへ
   // 既存のデッドマン/E-stopゲートに乗せたまま流す）: linear.z=上下, angular.x=左右。
   // cmd_vel_to_joy.py 側で /joy の buttons[4]=上, [5]=下, [6]=左, [7]=右 に変換する。
-  // 画面はパッド未接続時のみ表示（パッド接続中はCFG.gamepad.jogButtonsの十字キーが担当）。
+  // 画面UIは持たずパッド専用（CFG.gamepad.jogButtonsの十字キー）で操作する。
   mechJog: [
     {id:'armUp',    label:'アーム ↑', axis:'linear.z',  sign:+1},
     {id:'armDown',  label:'アーム ↓', axis:'linear.z',  sign:-1},
@@ -325,16 +212,16 @@ const CFG = {
       strafe:  {index: 0, invert: true},    // drive.y（左右）＝左スティックx
       rotate:  {index: 2, invert: true},    // drive.wz（旋回）＝右スティックx
     },
-    // buttons: CFG.fallbackCommands の id → ボタン番号（エッジ）。checkpoint/gateはパッドから外し画面専用。
-    buttons: {launch:0, intake:1},          // A=射出 B=回収
+    // buttons: CFG.commands の id → ボタン番号（エッジ）。4つとも画面ボタンと両方から操作できる。
+    buttons: {launch:0, intake:1, checkpoint:2, gate:3},   // A=射出 B=回収 X=関所配置 Y=城門配置
     suctionButton: 7,                       // RT。押すたびに吸着ON/OFFをトグル
     // jogButtons: アーム4方向 → ボタン番号（ホールド）。十字キー(D-pad)を割り当て。
     jogButtons: {armUp:12, armDown:13, armLeft:14, armRight:15},
   },
   // telemetry JSON 例:
-  // {"vbat":23.8,"state":"MANUAL","pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92,
-  //  "wheels":[{"angle":12.3,"ok":true}, ...×4]}
+  // {"pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92}
   // pose(x,y=m, theta=rad)・quality(0〜1、位置推定の健全性)は任意項目（無くても他の表示に影響しない）
+  // ※vbat/state/wheelsは実測データの裏付けが無いため本UIでは表示しない（実装するときはここに追加する）
 
   // ---- フィールドマップ（とうロボ2026 実フィールド。原点=フィールド左下、単位m、x=右、y=上）----
   field: {
@@ -369,145 +256,41 @@ const CFG = {
   },
   team: 'red',                                            // 現在の自チーム（マップ上部のトグルで変更）
   map: {trailMax:60, qualityWarn:0.5},                     // 軌跡の保持点数／品質低下とみなす閾値
-
-  // ---- 目標/得点（とうロボ2026ルール。FAQで変わりうるのでここに集約） ----
-  game: {
-    points: {ballCollect:10, checkpoint:20, gate:30, castleBlock:15, castleBonus:25},
-    checkpoints: 2,                                        // 関所の数
-    castleBlocks: 5,                                       // 相手城のブロック数
-    vgoal: {checkpoints:2, gateMin:1, castleAll:true},      // 手動ロボのVゴール条件
-  },
 };
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 let ros=null, connected=false;
-let drive={x:0,y:0,wz:0}, estop=false, lastTelem=0, pubCount=0;
+let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
 let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null;
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
-let zoomOn=false, goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（拡大タップ→goal）用
+let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
 const demo=()=>$('#demo').checked;
-let suctionOn=false;   // 吸着トグル状態。画面ボタン・パッドRTのどちらからでも同じ状態をトグルする
+let suctionOn=false;   // 吸着トグル状態。パッドRT(toggleSuction())からのみ更新される
 
 // ---- 半自動コマンドボタン生成（常時表示。checkpoint/gate） ----
 const cmdBox=$('#cmds');
 CFG.commands.forEach(c=>{
   const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
+  if(c.color) b.style.setProperty('--c',c.color);
+  if(c.colorFg) b.style.setProperty('--c-fg',c.colorFg);
   b.onclick=()=>sendCommand(c.id);
   cmdBox.appendChild(b);
 });
-// ---- 手動フォールバックボタン生成（launch/intake。パッド未接続時のみ表示、#fallbackWrapごと切替） ----
-const fallbackBox=$('#fallbackCmds');
-CFG.fallbackCommands.forEach(c=>{
-  const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
-  b.onclick=()=>sendCommand(c.id);
-  fallbackBox.appendChild(b);
-});
-// ---- 吸着トグルボタン ----
-function toggleSuction(){ suctionOn=!suctionOn; updateSuctionUI(); }
-function updateSuctionUI(){
-  const b=$('#suctionBtn');
-  b.classList.toggle('on',suctionOn);
-  b.textContent='吸着 '+(suctionOn?'ON':'OFF');
-}
-$('#suctionBtn').onclick=()=>toggleSuction();
-updateSuctionUI();
-// ---- 機構手動ジョグボタン生成（アーム上下左右。ホールドで動作。Pointer Captureで指が枠外に出ても離すまで確実に検知） ----
-const jogBox=$('#jog');
+// 吸着トグル・アーム4方向ジョグは画面UIを持たず、パッド専用（CFG.gamepad.suctionButton/jogButtons）で操作する。
+// 状態はここで保持し、パッドの入力(pollGamepad)からのみ更新される。
+function toggleSuction(){ suctionOn=!suctionOn; }
 const jogState={};
-CFG.mechJog.forEach(j=>{
-  jogState[j.id]=false;
-  const b=document.createElement('button'); b.className='cmd jogbtn'; b.textContent=j.label;
-  b.dataset.id=j.id;
-  const press=ev=>{ ev.preventDefault(); try{b.setPointerCapture(ev.pointerId);}catch(e){}
-    jogState[j.id]=true; b.classList.add('jogging'); };
-  const release=()=>{ jogState[j.id]=false; b.classList.remove('jogging'); };
-  b.addEventListener('pointerdown',press);
-  b.addEventListener('pointerup',release);
-  b.addEventListener('pointercancel',release);
-  jogBox.appendChild(b);
-});
+CFG.mechJog.forEach(j=>{ jogState[j.id]=false; });
 function jogAxisValue(axis){
   let v=0; CFG.mechJog.forEach(j=>{ if(j.axis===axis && jogState[j.id]) v+=j.sign; });
   return Math.max(-1,Math.min(1,v));
 }
-// ---- パッド接続状態で手動フォールバックパネル(launch/intake/吸着/アーム)の表示を切替 ----
-function updateFallbackVisibility(){ $('#fallbackWrap').style.display = gpadActive ? 'none' : ''; }
 // タブが非アクティブになった際にホールド状態が残留しないようにする（安全側フォールバック。
 // 実際の走行停止は cmd_vel_to_joy のデッドマン(200ms)が担保する）
-addEventListener('blur',()=>{ Object.keys(jogState).forEach(k=>jogState[k]=false);
-  $$('#jog .jogbtn').forEach(b=>b.classList.remove('jogging')); });
+addEventListener('blur',()=>{ Object.keys(jogState).forEach(k=>jogState[k]=false); });
 document.addEventListener('visibilitychange',()=>{ if(document.hidden){
-  Object.keys(jogState).forEach(k=>jogState[k]=false);
-  $$('#jog .jogbtn').forEach(b=>b.classList.remove('jogging')); } });
-// ---- 各輪セル生成 ----
-const wbox=$('#wheels');
-for(let i=0;i<4;i++){
-  const d=document.createElement('div'); d.className='wheel';
-  d.innerHTML=`<div class="lbl">W${i+1}</div><div class="a">--°</div><div class="ok">OK</div>`;
-  wbox.appendChild(d);
-}
-
-// ===== 目標/得点（とうロボ2026ルール。実機通信とは独立、スマホ内stateのみで動作）=====
-// gameState は将来 telemetry の game フィールドで上書きできる形にしてあるが、現時点では operator のタップのみで更新する
-let gameState = {
-  ballsCollected: 0,
-  checkpoints: Array(CFG.game.checkpoints).fill(false),
-  gateBalls: 0,
-  castleDown: 0,
-};
-function calcScore(g){
-  const P=CFG.game.points;
-  const cp=g.checkpoints.filter(Boolean).length;
-  let s = g.ballsCollected*P.ballCollect + cp*P.checkpoint + g.gateBalls*P.gate + g.castleDown*P.castleBlock;
-  if(g.castleDown===CFG.game.castleBlocks) s+=P.castleBonus;   // 落城ボーナス
-  return s;
-}
-function checkVgoal(g){
-  const V=CFG.game.vgoal;
-  const cpOk = g.checkpoints.filter(Boolean).length >= V.checkpoints;
-  const gateOk = g.gateBalls >= V.gateMin;
-  const castleOk = V.castleAll ? (g.castleDown===CFG.game.castleBlocks) : true;
-  return {cpOk, gateOk, castleOk, all: cpOk && gateOk && castleOk};
-}
-function setVg(el,ok,label){ el.textContent=(ok?'✓ ':'✗ ')+label; el.classList.toggle('ok',ok); }
-function renderGame(){
-  $('#scoreVal').textContent = calcScore(gameState);
-  $$('#checkpointChips .chipbtn').forEach((el,i)=>el.classList.toggle('on', !!gameState.checkpoints[i]));
-  $('#gateVal').textContent = gameState.gateBalls;
-  $('#collectVal').textContent = gameState.ballsCollected;
-  const full = gameState.castleDown===CFG.game.castleBlocks;
-  $$('#castleBlocksRow .blockcell').forEach((el,i)=>el.classList.toggle('down', i<gameState.castleDown));
-  $('#castleBadge').style.display = full ? 'inline-block' : 'none';
-  const vg=checkVgoal(gameState);
-  setVg($('#vgCheckpoints'), vg.cpOk, `関所${CFG.game.vgoal.checkpoints}`);
-  setVg($('#vgGate'), vg.gateOk, `城門≥${CFG.game.vgoal.gateMin}`);
-  setVg($('#vgCastle'), vg.castleOk, '落城');
-  $('#vgoalBanner').style.display = vg.all ? 'block' : 'none';
-}
-const cpBox=$('#checkpointChips');
-for(let i=0;i<CFG.game.checkpoints;i++){
-  const b=document.createElement('button'); b.className='chipbtn'; b.textContent='関所'+(i+1);
-  b.onclick=()=>{ gameState.checkpoints[i]=!gameState.checkpoints[i]; renderGame(); };
-  cpBox.appendChild(b);
-}
-const blockBox=$('#castleBlocksRow');
-for(let i=0;i<CFG.game.castleBlocks;i++){
-  const b=document.createElement('div'); b.className='blockcell';
-  // タップで倒す/戻すトグル：レーティング入力と同様、既に倒れているセルを叩くと1つ手前まで戻す
-  b.onclick=()=>{ gameState.castleDown = (i<gameState.castleDown) ? i : i+1; renderGame(); };
-  blockBox.appendChild(b);
-}
-$('#gatePlus').onclick=()=>{ gameState.gateBalls++; renderGame(); };
-$('#gateMinus').onclick=()=>{ gameState.gateBalls=Math.max(0,gameState.gateBalls-1); renderGame(); };
-$('#collectPlus').onclick=()=>{ gameState.ballsCollected++; renderGame(); };
-$('#collectMinus').onclick=()=>{ gameState.ballsCollected=Math.max(0,gameState.ballsCollected-1); renderGame(); };
-$('#gameReset').onclick=()=>{
-  if(!confirm('新しい試合として得点をリセットしますか？')) return;
-  gameState = {ballsCollected:0, checkpoints:Array(CFG.game.checkpoints).fill(false), gateBalls:0, castleDown:0};
-  renderGame();
-};
-renderGame();
+  Object.keys(jogState).forEach(k=>jogState[k]=false); } });
 
 // ===== Gamepad（Bluetooth接続の物理コントローラ。外部コントローラ専用のためタッチ入力は無し）=====
 let gpadActive=false, advOpen=false;
@@ -523,24 +306,15 @@ dzSlider.oninput=()=>{ deadzone=parseFloat(dzSlider.value); dzVal.textContent=de
 function dz(v){ return Math.abs(v)<deadzone ? 0 : v; }
 function axisVal(gp,def){ const raw=dz(gp.axes[def.index]||0); return def.invert ? -raw : raw; }
 
-function setGpadUI(on,name){
-  const bar=$('#gpadbar');
-  bar.classList.toggle('on',on);
-  $('#gpadName').textContent = on ? '🎮 '+String(name||'').slice(0,30) : '未接続';
-  $('#inputSrc').textContent = on ? '入力: パッド' : '入力: なし';
-}
-setGpadUI(false);
-
 let suctionBtnHeld=false;   // パッドRTのエッジ検知用（トグルなので押した瞬間だけ発火）
 function pollGamepad(){
   const gp=(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g);
-  const wasActive=gpadActive;
   if(gp){
-    gpadActive=true; setGpadUI(true,gp.id);
+    gpadActive=true;
     const fx=axisVal(gp,AX.forward), fy=axisVal(gp,AX.strafe), rz=axisVal(gp,AX.rotate);
     drive.x=fx; drive.y=fy; drive.wz=rz;
-    // 手動フォールバック・エッジ系（launch/intake）
-    CFG.fallbackCommands.forEach(c=>{
+    // 全機構コマンド（エッジ）。画面ボタンとパッドの両方から同じsendCommand()を呼ぶ。
+    CFG.commands.forEach(c=>{
       const idx=BTN[c.id]; if(idx==null) return;
       const b=gp.buttons[idx]; if(!b) return;
       if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
@@ -556,27 +330,22 @@ function pollGamepad(){
     Object.entries(CFG.gamepad.jogButtons).forEach(([id,idx])=>{
       const b=gp.buttons[idx];
       jogState[id]=!!(b && b.pressed);
-      $$('#jog .jogbtn').forEach(el=>{ if(el.dataset.id===id) el.classList.toggle('jogging',jogState[id]); });
     });
     if(advOpen){
       $('#dbgAxes').textContent = gp.axes.map((v,i)=>`[${i}] ${v.toFixed(2)}`).join('  ');
       $('#dbgButtons').textContent = gp.buttons.map((b,i)=>`[${i}] ${b.pressed?1:0}`).join(' ');
     }
   }else if(gpadActive){
-    gpadActive=false; setGpadUI(false);
+    gpadActive=false;
     $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
   }
-  if(gpadActive!==wasActive) updateFallbackVisibility();
 }
 addEventListener('gamepadconnected',pollGamepad);
 addEventListener('gamepaddisconnected',()=>{
-  gpadActive=false; drive={x:0,y:0,wz:0}; setGpadUI(false);
+  gpadActive=false; drive={x:0,y:0,wz:0};
   Object.keys(jogState).forEach(k=>jogState[k]=false);
-  $$('#jog .jogbtn').forEach(el=>el.classList.remove('jogging'));
   $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
-  updateFallbackVisibility();
 });
-updateFallbackVisibility();   // 初期表示（起動時点ではパッド未接続想定なのでフォールバックを表示）
 
 // ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
 // pose(推定側の座標系, rad) → フィールド座標(m, 原点左下)。CFG.teams[team].poseToField で機体/座標規約を吸収
@@ -591,15 +360,13 @@ function sizeFieldCanvas(){
 }
 // iPhone横画面(landscape)前提のため、フィールドを90°回転して表示する。
 // field x(左右10m, チームで左右反転)→画面の縦方向、field y(奥行12m, 手前=自陣0→奥=城12)→画面の横方向（左→右で前進）
-// ext={x0,x1,y0,y1}: 表示するフィールド座標の範囲（全面表示はフィールド全体、自陣拡大表示は片面のみ）
-function fullExt(){ const F=CFG.field; return {x0:0,x1:F.size.x,y0:0,y1:F.size.y}; }
+// ext={x0,x1,y0,y1}: 表示するフィールド座標の範囲。常に自陣片面のみを表示する
 function ourHalfExt(){
   const F=CFG.field, teamCfg=CFG.teams[CFG.team];
   const x0 = teamCfg.ourHalf==='left' ? 0 : F.size.x/2;
   const x1 = teamCfg.ourHalf==='left' ? F.size.x/2 : F.size.x;
   return {x0, x1, y0:0, y1:F.size.y};
 }
-function currentExt(){ return zoomOn ? ourHalfExt() : fullExt(); }
 function fieldFit(cv,ext){
   const fw=ext.y1-ext.y0, fh=ext.x1-ext.x0;
   const scale=Math.min(cv.width/fw, cv.height/fh);
@@ -607,6 +374,15 @@ function fieldFit(cv,ext){
 }
 function f2p(fx,fy,tr){ return {px: tr.offX+(fy-tr.y0)*tr.scale, py: tr.offY+(fx-tr.x0)*tr.scale}; }
 function p2f(px,py,tr){ return {fx: (py-tr.offY)/tr.scale+tr.x0, fy: (px-tr.offX)/tr.scale+tr.y0}; }
+// 2つの#rrggbb色を不透明のまま混ぜる（半透明合成は使わず、常にベタ塗りの単色を作る）
+function mixHex(hexA,hexB,t){
+  const pa=parseInt(hexA.slice(1),16), pb=parseInt(hexB.slice(1),16);
+  const ch=(v,s)=>(v>>s)&0xFF;
+  const r=Math.round(ch(pa,16)*(1-t)+ch(pb,16)*t);
+  const g=Math.round(ch(pa,8)*(1-t)+ch(pb,8)*t);
+  const b=Math.round(ch(pa,0)*(1-t)+ch(pb,0)*t);
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
 function drawRectF(ctx,tr,x0,y0,x1,y1,opt={}){
   const a=f2p(x0,y1,tr), b=f2p(x1,y0,tr);
   const x=Math.min(a.px,b.px), y=Math.min(a.py,b.py), w=Math.abs(b.px-a.px), h=Math.abs(b.py-a.py);
@@ -625,7 +401,6 @@ function drawCircleF(ctx,tr,cx,cy,r,opt={}){
 }
 let trailOn=true;
 $('#trailToggle').onchange=()=>{ trailOn=$('#trailToggle').checked; drawField(); };
-$('#zoomToggle').onchange=()=>{ zoomOn=$('#zoomToggle').checked; drawField(); };
 function setTeam(team){
   CFG.team=team;
   $('#teamRed').classList.toggle('active', team==='red');
@@ -643,45 +418,65 @@ sizeFieldCanvas(); drawField();   // フィールドマップは常時表示な�
 function drawField(){
   const cv=$('#fieldCanvas'); if(cv.width<2||cv.height<2) return;
   const ctx=cv.getContext('2d'); const F=CFG.field, team=CFG.team, teamCfg=CFG.teams[team];
-  const tr=fieldFit(cv,currentExt());
+  const tr=fieldFit(cv,ourHalfExt());
+  const MONO='ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace';   // canvasはCSS var()を解決しないため実フォント名で指定
   ctx.clearRect(0,0,cv.width,cv.height);
   ctx.fillStyle='#101a1f'; ctx.fillRect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale);
 
-  // 自陣ハーフのハイライト（写真のような色分けに寄せてやや濃いめ。自陣拡大表示中は全面が自陣なので省略）
-  if(!zoomOn){
-    const he=ourHalfExt();
-    drawRectF(ctx,tr,he.x0,0,he.x1,F.size.y,{fill:teamCfg.color+'24'});
-  }
+  // ゾーンごとにベタ塗りで色分け（半透明合成は使わない）。手前＝自陣スタート寄りほど濃く、奥＝城寄りほど淡く、
+  // 3段階でくっきり切り替えることでエリア1/2/3の境界が一目でわかるようにする
+  const ZONE_MIX=[0.35,0.55,0.75];
+  F.zones.forEach((z,i)=>{
+    drawRectF(ctx,tr,0,z.y0,F.size.x,z.y1,{fill:mixHex(teamCfg.color,'#101a1f',ZONE_MIX[i]??0.75)});
+  });
 
-  // グリッド（1m間隔）＋軸目盛り（2m間隔）
-  ctx.strokeStyle='#26333a'; ctx.lineWidth=1;
-  for(let gx=0; gx<=F.size.x; gx++){ const a=f2p(gx,0,tr), b=f2p(gx,F.size.y,tr);
-    ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
-  for(let gy=0; gy<=F.size.y; gy++){ const a=f2p(0,gy,tr), b=f2p(F.size.x,gy,tr);
-    ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
-  ctx.fillStyle='#8a969c'; ctx.font='10px sans-serif';
+  // グリッド: マイナー(1m,薄)とメジャー(2m,目盛りと同じ間隔でやや強め)の二段構成
+  const drawGridLines=(step,color,lw)=>{
+    ctx.strokeStyle=color; ctx.lineWidth=lw;
+    for(let gx=0; gx<=F.size.x; gx+=step){ if(step===1 && gx%2===0) continue;
+      const a=f2p(gx,0,tr), b=f2p(gx,F.size.y,tr);
+      ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+    for(let gy=0; gy<=F.size.y; gy+=step){ if(step===1 && gy%2===0) continue;
+      const a=f2p(0,gy,tr), b=f2p(F.size.x,gy,tr);
+      ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+  };
+  drawGridLines(1,'#1c262c',1);
+  drawGridLines(2,'#33434c',1);
+  ctx.fillStyle='#a9b6bc'; ctx.font=`10px ${MONO}`;
   // 横軸目盛り＝奥行y(手前0〜奥12)。縦軸目盛り＝左右x(0〜10)
   ctx.textAlign='center';
-  for(let gy=0; gy<=F.size.y; gy+=2){ const p=f2p(0,gy,tr); ctx.fillText(String(gy), p.px, tr.offY+F.size.x*tr.scale+11); }
+  for(let gy=0; gy<=F.size.y; gy+=2){ const p=f2p(0,gy,tr); ctx.fillText(String(gy), p.px, tr.offY+F.size.x*tr.scale+12); }
   ctx.textAlign='right';
-  for(let gx=0; gx<=F.size.x; gx+=2){ const p=f2p(gx,0,tr); ctx.fillText(String(gx), tr.offX-4, p.py+3); }
+  for(let gx=0; gx<=F.size.x; gx+=2){ const p=f2p(gx,0,tr); ctx.fillText(String(gx), tr.offX-5, p.py+3); }
+
+  // 寸法線（奥行12.0m）: 余白があるときだけ上マージンにブラケット表示
+  if(tr.offY>16){
+    const py=tr.offY*0.52, xL=tr.offX, xR=tr.offX+tr.fw*tr.scale;
+    ctx.strokeStyle='#5c6b72'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(xL,py); ctx.lineTo(xR,py); ctx.stroke();
+    [xL,xR].forEach(x=>{ ctx.beginPath(); ctx.moveTo(x,py-4); ctx.lineTo(x,py+4); ctx.stroke(); });
+    const label=F.size.y.toFixed(1)+' m';
+    ctx.font=`11px ${MONO}`;
+    const tw=ctx.measureText(label).width, cx=(xL+xR)/2;
+    ctx.fillStyle='#101a1f'; ctx.fillRect(cx-tw/2-5,py-8,tw+10,16);
+    ctx.fillStyle='#c7d0d4'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label,cx,py+0.5); ctx.textBaseline='alphabetic';
+  }
 
   // 中央仕切り線
   { const a=f2p(F.centerDivider.x,0,tr), b=f2p(F.centerDivider.x,F.size.y,tr);
     ctx.strokeStyle='#4a5a63'; ctx.lineWidth=Math.max(1.5,tr.scale*0.02);
     ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
 
-  // ゾーン境界＋ラベル
-  ctx.setLineDash([4,4]);
+  // ゾーン境界（実線ではっきり）＋ラベル
   F.zones.forEach(z=>{
     if(z.y1<F.size.y){ const a=f2p(0,z.y1,tr), b=f2p(F.size.x,z.y1,tr);
-      ctx.strokeStyle='#3a4850'; ctx.lineWidth=1;
+      ctx.strokeStyle='#0d1316'; ctx.lineWidth=Math.max(1.5,tr.scale*0.018);
       ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
-    const lp=f2p(0.3,(z.y0+z.y1)/2,tr);
-    ctx.setLineDash([]); ctx.fillStyle='#5c6b72'; ctx.font='11px sans-serif'; ctx.textAlign='left';
-    ctx.fillText(z.label, lp.px, lp.py); ctx.setLineDash([4,4]);
+    const lp=f2p(tr.x0+0.35,(z.y0+z.y1)/2,tr);   // tr.x0基準（自陣の外側エッジ）にすることでRED/BLUE両方で画面内に収まる
+    ctx.fillStyle='#e6eaec'; ctx.font=`bold 12px ${MONO}`; ctx.textAlign='left';
+    ctx.fillText(z.label, lp.px, lp.py);
   });
-  ctx.setLineDash([]);
 
   // スタートゾーン（自チームのみ。写真の角の塗り潰し四角に寄せて濃い塗りに）
   const sz=F.startZones[team];
@@ -691,7 +486,7 @@ function drawField(){
   // 城門（両チーム共通の設備）
   drawRectF(ctx,tr, F.castleGate.cx-F.castleGate.w/2, F.castleGate.cy-F.castleGate.h/2,
     F.castleGate.cx+F.castleGate.w/2, F.castleGate.cy+F.castleGate.h/2,
-    {fill:'#5c6b7250', stroke:'#8a969c', label:F.castleGate.label});
+    {fill:'#4a5a63', stroke:'#c7d0d4', label:F.castleGate.label, labelColor:'#101a1f'});
 
   // 関所（自チームのみ）
   F.checkpoints[team].forEach(p=>drawCircleF(ctx,tr,p.x,p.y,p.r,{fill:teamCfg.color+'a0', stroke:teamCfg.color}));
@@ -740,10 +535,10 @@ function drawField(){
   ctx.fill(); ctx.strokeStyle='#0d1316'; ctx.lineWidth=1.5; ctx.stroke();
   ctx.globalAlpha=1;
 
-  // 移動目標（自陣拡大タップで設定。到達 or キャンセルで goalActive=false になり消える）
+  // 移動目標（自陣タップで設定。到達 or キャンセルで goalActive=false になり消える）
   if(goalActive && goalField){
     const gp=f2p(goalField.x,goalField.y,tr);
-    ctx.strokeStyle='var(--warn)'; ctx.lineWidth=Math.max(1,tr.scale*0.015); ctx.setLineDash([6,4]);
+    ctx.strokeStyle='#efa23a'; ctx.lineWidth=Math.max(1,tr.scale*0.015); ctx.setLineDash([6,4]);   // --warn（canvasはvar()を解決しないため実色指定）
     ctx.beginPath(); ctx.moveTo(base.px,base.py); ctx.lineTo(gp.px,gp.py); ctx.stroke();
     ctx.setLineDash([]);
     const m=Math.max(6,tr.scale*0.18);
@@ -756,7 +551,7 @@ addEventListener('resize',()=>{ sizeFieldCanvas(); drawField(); });
 addEventListener('orientationchange',()=>{ sizeFieldCanvas(); drawField(); });
 setInterval(drawField, 120); // 品質点滅・軌跡追従のための定期再描画（常時表示）
 
-// ===== 移動コマンドB（自陣拡大表示タップ→/robot/goal）。運動学は空、配線と状態遷移のみ =====
+// ===== 移動コマンドB（自陣表示タップ→/robot/goal）。運動学は空、配線と状態遷移のみ =====
 // フィールド座標(m) → pose座標系。poseToFieldXY の逆変換（theta は goal に使わないため変換しない）
 function fieldToPoseXY(fx,fy,team){
   const tr=CFG.teams[team].poseToField;
@@ -770,7 +565,7 @@ function updateNavModeUI(){
 function clearGoal(){ goalActive=false; goalField=null; navMode='manual'; updateNavModeUI(); drawField(); }
 function sendGoal(fx,fy){
   goalField={x:fx,y:fy}; goalActive=true; navMode='auto'; updateNavModeUI(); drawField();
-  if(demo()){ demoLog('goal'); return; }
+  if(demo()) return;
   if(connected && goalPub){
     const p=fieldToPoseXY(fx,fy,CFG.team);
     goalPub.publish(new ROSLIB.Message({
@@ -784,7 +579,6 @@ function sendGoalCancel(){
   if(connected && goalCancelPub) goalCancelPub.publish(new ROSLIB.Message({data:true}));
 }
 function onFieldTap(ev){
-  if(!zoomOn || estop) return;
   const cv=$('#fieldCanvas');
   const rect=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
   const px=(ev.clientX-rect.left)*dpr, py=(ev.clientY-rect.top)*dpr;
@@ -821,12 +615,15 @@ function connect(){
 }
 function disconnect(){ if(ros){try{ros.close();}catch(e){}} ros=null; connected=false;
   $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; }
-$('#btnConn').onclick=()=>{ connected?disconnect():connect(); };
+$('#btnConn').onclick=()=>{
+  if(connected){ disconnect(); return; }
+  $('#demo').checked=false;   // 接続を押したら実機操作の意思とみなし、デモは自動でOFFにする
+  connect();
+};
 
 function sendCommand(id){
   flash(id);
   if(connected && !demo() && cmdStr) cmdStr.publish(new ROSLIB.Message({data:id}));
-  if(demo()) demoLog(id);
 }
 function flash(id){ /* 視覚フィードバックは押下時のCSSで処理 */ }
 
@@ -837,10 +634,10 @@ setInterval(()=>{
   if(navMode==='auto' && (drive.x!==0 || drive.y!==0 || drive.wz!==0)){
     clearGoal(); sendGoalCancel();
   }
-  const v = estop ? {x:0,y:0,wz:0} : drive;
-  const jz = estop ? 0 : jogAxisValue('linear.z');    // 機構手動ジョグ（アーム上下）
-  const jx = estop ? 0 : jogAxisValue('angular.x');   // 機構手動ジョグ（アーム左右）
-  const su = estop ? 0 : (suctionOn ? 1 : 0);         // 吸着（トグル状態。estop中は必ず0）
+  const v = drive;
+  const jz = jogAxisValue('linear.z');    // 機構手動ジョグ（アーム上下）
+  const jx = jogAxisValue('angular.x');   // 機構手動ジョグ（アーム左右）
+  const su = suctionOn ? 1 : 0;           // 吸着（トグル状態）
   if(connected && !demo() && cmdVel){
     cmdVel.publish(new ROSLIB.Message({
       linear:{x:v.x*CFG.maxLin, y:v.y*CFG.maxLin, z:jz},
@@ -861,8 +658,6 @@ setInterval(()=>{
 
 // ===== テレメトリ描画 =====
 function applyTelem(t){
-  if(t.vbat!=null) $('#vbat').textContent=Number(t.vbat).toFixed(1)+' V';
-  if(t.state!=null) $('#state').textContent=t.state;
   if(t.pose!=null){
     const p=t.pose;                                       // x,y=m, theta=rad（CLAUDE.md契約）
     $('#pose').textContent=`${Number(p.x).toFixed(2)}, ${Number(p.y).toFixed(2)}, ${(Number(p.theta)*180/Math.PI).toFixed(0)}°`;
@@ -871,36 +666,18 @@ function applyTelem(t){
     if(poseHistory.length>CFG.map.trailMax) poseHistory.shift();
   }
   if(t.quality!=null) lastQuality=Number(t.quality);
-  if(Array.isArray(t.wheels)){
-    [...wbox.children].forEach((w,i)=>{ const d=t.wheels[i]||{};
-      w.querySelector('.a').textContent=(d.angle!=null?Number(d.angle).toFixed(0):'--')+'°';
-      w.classList.toggle('bad', d.ok===false);
-    });
-  }
   drawField();
 }
 
-// ===== E-stop =====
-$('#estop').onclick=()=>{ estop=!estop; $('#estop').classList.toggle('latched',estop);
-  $('#estop').textContent=estop?'⛔ 停止中 — 解除':'⛔ 非常停止';
-  if(estop && suctionOn){ suctionOn=false; updateSuctionUI(); }   // estop時は吸着も強制解除（再開には再操作が必要）
-  if(connected&&!demo()&&cmdStr) cmdStr.publish(new ROSLIB.Message({data:estop?'estop':'release'})); };
-
 // ===== デモ（rosbridge無しで端末UIを検証）=====
-let demoState=['MANUAL','ALIGN','MANUAL','HOME'], dsi=0, vb=24.0, ang=[0,0,0,0];
 let demoPose={x:0,y:0,theta:0};
 setInterval(()=>{
   if(!demo()) return;
-  vb=Math.max(20, vb-0.003+(Math.random()-0.5)*0.02);
-  ang=ang.map(a=>a+(Math.random()-0.5)*6);
   { const th=demoPose.theta+drive.wz*0.06;                // theta は rad。±πに正規化して発散を防ぐ
     demoPose={x:demoPose.x+drive.x*0.02, y:demoPose.y+drive.y*0.02, theta:Math.atan2(Math.sin(th),Math.cos(th))}; }
-  applyTelem({vbat:vb, state:estop?'ESTOP':demoState[dsi], pose:demoPose,
-    wheels:ang.map((a,i)=>({angle:a,ok:i!==2||vb>21}))});
+  applyTelem({pose:demoPose});
   lastTelem=performance.now();
 }, 120);
-setInterval(()=>{ if(demo()) dsi=(dsi+1)%demoState.length; }, 4000);
-function demoLog(id){ const s=$('#state'); const prev=s.textContent; s.textContent='▶ '+id; setTimeout(()=>{if(s.textContent==='▶ '+id)s.textContent=prev;},700); }
 </script>
 </body>
 </html>
