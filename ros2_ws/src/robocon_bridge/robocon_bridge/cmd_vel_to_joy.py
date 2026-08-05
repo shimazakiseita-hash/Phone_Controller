@@ -6,7 +6,7 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 
 AXES_SIZE = 8
-BUTTONS_SIZE = 9
+BUTTONS_SIZE = 8
 PUBLISH_HZ = 20.0
 
 # torobo2026_ros2_rp/pscon_node.cpp の実装に合わせる:
@@ -20,41 +20,31 @@ TURN_DEADZONE = 0.1
 # デッドマン: 最後に /cmd_vel を受信してからこの秒数を超えたら停止（axes/buttons全0）とみなす
 DEADMAN_TIMEOUT_S = 0.2
 
-# /robot/command の command_id -> buttons index（pscon_node が buttons[0..8] を読む前提。9要素固定）
+# /robot/command の command_id -> buttons index。
+# torobo2026_ros2_rp/can_ps4_node.cpp が bt_data(=buttons[0..7]) を実PS4パッドのボタン配置
+# （×○△□L1 R1 L2 R2）としてそのまま解釈するため、ここもそのビット位置に合わせる
+# （can_ps4_node.cpp 側は一切変更しない前提）。
 COMMAND_BUTTON_MAP = {
-    'launch': 0,
-    'intake': 1,
-    'checkpoint': 2,
-    'gate': 3,
+    'release_suction': 0,  # ×: 吸引切る(設置)
+    'intake': 1,           # 〇: 回収
+    'arm_stow': 2,         # △: アーム収納
+    'arm_start': 3,        # □: スタート初期移動
+    'launch_to_intake': 4, # L1: ベル直設置→回収
+    'gate': 5,             # R1: 城門設置高さ
+    'descend_adjust': 6,   # L2: 降下微調整
+    'checkpoint': 7,       # R2: 関所設置高さ
 }
 
 # ボタンは押しっぱなし連射を防ぐため、受信のたびにこの秒数だけ1を出すエッジパルスにする
 BUTTON_PULSE_S = 0.15
 
-# 機構手動ジョグ（ホールドで動作、離すと停止）。新規トピックは増やさず、/cmd_vel の未使用フィールド
-# linear.z=アーム上下, angular.x=アーム左右 に載せて送られてくる値を、/joy の buttons[4..7] に変換する。
-# ハンドは吸着式のため仰角は無い（アームは上下左右の平面2軸ジョグのみ）。
-# ホールド中は毎フレーム/cmd_velが再送されるため、上のBUTTON_PULSE_Sのようなパルス処理は不要
-# （デッドマン切れやestopで自動的に0へ落ちるので、buttons[0..3]と同じ安全ゲートの中で扱う）。
-JOG_DEADZONE = 0.5  # -1/0/+1 のデジタル値想定なので緩めのしきい値でよい
-BUTTON_ARM_UP = 4
-BUTTON_ARM_DOWN = 5
-BUTTON_ARM_LEFT = 6
-BUTTON_ARM_RIGHT = 7
-
-# 吸着（トグル、ホールド中のような単発値ではなく画面/パッド側でON/OFF状態そのものを管理）。
-# /cmd_vel.angular.y に 0/1 を載せて送られてくる値を /joy の buttons[8] に変換する。
-# デッドマン切れ・estopでは他のbuttonsと同様に強制0（吸着解除）になる。
-SUCTION_DEADZONE = 0.5
-BUTTON_SUCTION = 8
-
 
 class CmdVelToJoyNode(Node):
     """/cmd_vel(Twist,軸) と /robot/command(String,ボタン) をマージして /joy を20Hz固定で publish する。
 
-    buttons[0..3] は /robot/command 由来のエッジパルス（定型シーケンス起動: launch/intake/checkpoint/gate）、
-    buttons[4..7] は /cmd_vel.linear.z / angular.x 由来のホールド値（アーム上下左右の手動ジョグ）、
-    buttons[8] は /cmd_vel.angular.y 由来のホールド値（吸着トグルの現在状態）。
+    buttons[0..7] は /robot/command 由来のエッジパルス（実PS4パッドのボタン配置×○△□L1 R1 L2 R2に
+    対応する定型アーム動作。COMMAND_BUTTON_MAP参照）。can_ps4_node.cpp 側のプロトコルに合わせているため、
+    射出・手動ジョグ・吸着トグルはこの経路には無い（実PS4パイプライン側が未実装のため今回は対象外）。
 
     安全ゲート:
       - デッドマン: 最後の /cmd_vel から DEADMAN_TIMEOUT_S 秒を超えたら停止
@@ -118,18 +108,6 @@ class CmdVelToJoyNode(Node):
             for idx, until in self._pulse_until.items():
                 if now < until:
                     buttons[idx] = 1
-
-            if self._last_cmd.linear.z > JOG_DEADZONE:
-                buttons[BUTTON_ARM_UP] = 1
-            elif self._last_cmd.linear.z < -JOG_DEADZONE:
-                buttons[BUTTON_ARM_DOWN] = 1
-            if self._last_cmd.angular.x > JOG_DEADZONE:
-                buttons[BUTTON_ARM_LEFT] = 1
-            elif self._last_cmd.angular.x < -JOG_DEADZONE:
-                buttons[BUTTON_ARM_RIGHT] = 1
-
-            if self._last_cmd.angular.y > SUCTION_DEADZONE:
-                buttons[BUTTON_SUCTION] = 1
 
         joy = Joy()
         joy.header.stamp = self.get_clock().now().to_msg()
