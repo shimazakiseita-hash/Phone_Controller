@@ -88,6 +88,7 @@
   #brandLogo{width:min(34%,120px);aspect-ratio:1/1;object-fit:cover;border-radius:50%;
     clip-path:circle(49.5%);filter:drop-shadow(0 0 22px rgba(74,144,217,.35)) drop-shadow(0 0 2px rgba(0,0,0,.4));
     opacity:.94}
+  #usageImg{width:65%;display:block;margin:0 auto;border-radius:8px}
 
   /* commands: 実PS4パッドのアーム8アクションに1:1対応するため8個並ぶ */
   #cmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
@@ -167,7 +168,10 @@
     </div>
   </div>
 </div>
-
+<div class="panel" id="usageWrap">
+  <div class="lbl" style="margin-bottom:8px"></div>
+  <img src="./con_image.jpg" alt="con" id="usageImg">
+</div>
 </div><!-- /#scrollarea -->
 
 <script>

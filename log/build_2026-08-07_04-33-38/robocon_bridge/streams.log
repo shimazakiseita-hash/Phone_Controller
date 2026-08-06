@@ -1,0 +1,47 @@
+[1.099s] Invoking command in '/home/ubuntu/Phone_Controller/ros2_ws/src/robocon_bridge': PYTHONPATH=/home/ubuntu/Phone_Controller/build/robocon_bridge/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../../build/robocon_bridge build --build-base /home/ubuntu/Phone_Controller/build/robocon_bridge/build install --record /home/ubuntu/Phone_Controller/build/robocon_bridge/install.log --install-scripts $base/lib/robocon_bridge --single-version-externally-managed install_data
+[1.423s] running egg_info
+[1.423s] creating ../../../build/robocon_bridge/robocon_bridge.egg-info
+[1.444s] writing ../../../build/robocon_bridge/robocon_bridge.egg-info/PKG-INFO
+[1.444s] writing dependency_links to ../../../build/robocon_bridge/robocon_bridge.egg-info/dependency_links.txt
+[1.445s] writing entry points to ../../../build/robocon_bridge/robocon_bridge.egg-info/entry_points.txt
+[1.445s] writing requirements to ../../../build/robocon_bridge/robocon_bridge.egg-info/requires.txt
+[1.445s] writing top-level names to ../../../build/robocon_bridge/robocon_bridge.egg-info/top_level.txt
+[1.445s] writing manifest file '../../../build/robocon_bridge/robocon_bridge.egg-info/SOURCES.txt'
+[1.488s] reading manifest file '../../../build/robocon_bridge/robocon_bridge.egg-info/SOURCES.txt'
+[1.489s] writing manifest file '../../../build/robocon_bridge/robocon_bridge.egg-info/SOURCES.txt'
+[1.489s] running build
+[1.489s] running build_py
+[1.489s] creating /home/ubuntu/Phone_Controller/build/robocon_bridge/build
+[1.489s] creating /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib
+[1.489s] creating /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge
+[1.490s] copying robocon_bridge/__init__.py -> /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge
+[1.490s] copying robocon_bridge/mock_node.py -> /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge
+[1.490s] copying robocon_bridge/cmd_vel_to_joy.py -> /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge
+[1.490s] copying robocon_bridge/nav_node.py -> /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge
+[1.490s] running install
+[1.500s] running install_lib
+[1.522s] creating /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge
+[1.522s] copying /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge/__init__.py -> /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge
+[1.523s] copying /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge/mock_node.py -> /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge
+[1.523s] copying /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge/cmd_vel_to_joy.py -> /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge
+[1.523s] copying /home/ubuntu/Phone_Controller/build/robocon_bridge/build/lib/robocon_bridge/nav_node.py -> /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge
+[1.524s] byte-compiling /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge/__init__.py to __init__.cpython-312.pyc
+[1.524s] byte-compiling /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge/mock_node.py to mock_node.cpython-312.pyc
+[1.525s] byte-compiling /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge/cmd_vel_to_joy.py to cmd_vel_to_joy.cpython-312.pyc
+[1.527s] byte-compiling /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge/nav_node.py to nav_node.cpython-312.pyc
+[1.528s] running install_data
+[1.528s] creating /home/ubuntu/Phone_Controller/install/robocon_bridge/share/ament_index
+[1.528s] creating /home/ubuntu/Phone_Controller/install/robocon_bridge/share/ament_index/resource_index
+[1.528s] creating /home/ubuntu/Phone_Controller/install/robocon_bridge/share/ament_index/resource_index/packages
+[1.528s] copying resource/robocon_bridge -> /home/ubuntu/Phone_Controller/install/robocon_bridge/share/ament_index/resource_index/packages
+[1.528s] copying package.xml -> /home/ubuntu/Phone_Controller/install/robocon_bridge/share/robocon_bridge
+[1.528s] creating /home/ubuntu/Phone_Controller/install/robocon_bridge/share/robocon_bridge/launch
+[1.528s] copying launch/bringup.launch.py -> /home/ubuntu/Phone_Controller/install/robocon_bridge/share/robocon_bridge/launch
+[1.529s] running install_egg_info
+[1.552s] Copying ../../../build/robocon_bridge/robocon_bridge.egg-info to /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages/robocon_bridge-0.0.1-py3.12.egg-info
+[1.553s] running install_scripts
+[1.710s] Installing cmd_vel_to_joy script to /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/robocon_bridge
+[1.710s] Installing mock_node script to /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/robocon_bridge
+[1.710s] Installing nav_node script to /home/ubuntu/Phone_Controller/install/robocon_bridge/lib/robocon_bridge
+[1.711s] writing list of installed files to '/home/ubuntu/Phone_Controller/build/robocon_bridge/install.log'
+[1.792s] Invoked command in '/home/ubuntu/Phone_Controller/ros2_ws/src/robocon_bridge' returned '0': PYTHONPATH=/home/ubuntu/Phone_Controller/build/robocon_bridge/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ubuntu/Phone_Controller/install/robocon_bridge/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../../build/robocon_bridge build --build-base /home/ubuntu/Phone_Controller/build/robocon_bridge/build install --record /home/ubuntu/Phone_Controller/build/robocon_bridge/install.log --install-scripts $base/lib/robocon_bridge --single-version-externally-managed install_data
