@@ -13,7 +13,8 @@ PUBLISH_HZ = 20.0
 # axes[3]=st_rx, axes[4]=st_ry, axes[6]=cross_bt(-1/0/1のみ判定、連続値不可)
 AXIS_ST_RX = 3
 AXIS_ST_RY = 4
-AXIS_CROSS_BT = 6
+AXIS_CROSS_BT_L = 6
+AXIS_CROSS_BT_R = 7
 
 TURN_DEADZONE = 0.1
 
@@ -100,9 +101,9 @@ class CmdVelToJoyNode(Node):
             axes[AXIS_ST_RY] = self._last_cmd.linear.x
             axes[AXIS_ST_RX] = self._last_cmd.linear.y
             if self._last_cmd.angular.z > TURN_DEADZONE:
-                axes[AXIS_CROSS_BT] = 1.0
+                axes[AXIS_CROSS_BT_L] = 1.0
             elif self._last_cmd.angular.z < -TURN_DEADZONE:
-                axes[AXIS_CROSS_BT] = -1.0
+                axes[AXIS_CROSS_BT_R] = 1.0
 
             now = self.get_clock().now()
             for idx, until in self._pulse_until.items():

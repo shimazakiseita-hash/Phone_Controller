@@ -13,7 +13,8 @@ PUBLISH_HZ = 20.0
 # axes[3]=st_rx, axes[4]=st_ry, axes[6]=cross_bt(-1/0/1のみ判定、連続値不可)
 AXIS_ST_RX = 3
 AXIS_ST_RY = 4
-AXIS_CROSS_BT = 6
+AXIS_CROSS_BT_L = 6
+AXIS_CROSS_BT_R = 7
 
 TURN_DEADZONE = 0.1
 
@@ -25,10 +26,10 @@ DEADMAN_TIMEOUT_S = 0.2
 # （×○△□L1 R1 L2 R2）としてそのまま解釈するため、ここもそのビット位置に合わせる
 # （can_ps4_node.cpp 側は一切変更しない前提）。
 COMMAND_BUTTON_MAP = {
-    'release_suction': 0,  # ×: 吸引切る(設置)
-    'intake': 1,           # 〇: 回収
-    'arm_stow': 2,         # △: アーム収納
-    'arm_start': 3,        # □: スタート初期移動
+    'release_suction': 0,  # A: 吸引切る(設置)
+    'intake': 1,           # B: 回収
+    'arm_stow': 2,         # RT: アーム収納
+    'arm_start': 3,        # X: スタート初期移動
     'launch_to_intake': 4, # L1: ベル直設置→回収
     'gate': 5,             # R1: 城門設置高さ
     'descend_adjust': 6,   # L2: 降下微調整
@@ -100,9 +101,9 @@ class CmdVelToJoyNode(Node):
             axes[AXIS_ST_RY] = self._last_cmd.linear.x
             axes[AXIS_ST_RX] = self._last_cmd.linear.y
             if self._last_cmd.angular.z > TURN_DEADZONE:
-                axes[AXIS_CROSS_BT] = 1.0
+                axes[AXIS_CROSS_BT_L] = 1.0
             elif self._last_cmd.angular.z < -TURN_DEADZONE:
-                axes[AXIS_CROSS_BT] = -1.0
+                axes[AXIS_CROSS_BT_R] = 1.0
 
             now = self.get_clock().now()
             for idx, until in self._pulse_until.items():
