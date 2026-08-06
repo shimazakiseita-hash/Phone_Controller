@@ -212,6 +212,10 @@ const CFG = {
       arm_start:2, intake:1, arm_stow:3, release_suction:0,
       launch_to_intake:4, gate:5, descend_adjust:6, checkpoint:7,
     },
+    // 追加: 十字キー（Gamepad API標準マッピングの buttons[12..15]）
+    dpad: {
+      dpad_up:12, dpad_down:13, dpad_left:14, dpad_right:15,
+    },
   },
   // telemetry JSON 例:
   // {"pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92}
@@ -275,8 +279,9 @@ CFG.commands.forEach(c=>{
 // ===== Gamepad（Bluetooth接続の物理コントローラ。外部コントローラ専用のためタッチ入力は無し）=====
 let gpadActive=false, advOpen=false;
 let deadzone=CFG.gamepad.deadzone;
-const AX=CFG.gamepad.axes, BTN=CFG.gamepad.buttons;
+const AX=CFG.gamepad.axes, BTN=CFG.gamepad.buttons, DPAD=CFG.gamepad.dpad;  // DPADを追加
 const btnHeld={};
+const dpadHeld={};  // 追加
 
 $('#advPanel').addEventListener('toggle', ()=>{ advOpen=$('#advPanel').open; });
 const dzSlider=$('#dzSlider'), dzVal=$('#dzVal');
@@ -298,6 +303,12 @@ function pollGamepad(){
       const b=gp.buttons[idx]; if(!b) return;
       if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
       else if(!b.pressed){ btnHeld[c.id]=false; }
+    });
+    // 追加: 十字キー（エッジ・パルス送出、既存ボタンと同じ仕組み）
+    Object.entries(DPAD).forEach(([id, idx])=>{
+      const b=gp.buttons[idx]; if(!b) return;
+      if(b.pressed && !dpadHeld[id]){ dpadHeld[id]=true; sendCommand(id); }
+      else if(!b.pressed){ dpadHeld[id]=false; }
     });
     if(advOpen){
       $('#dbgAxes').textContent = gp.axes.map((v,i)=>`[${i}] ${v.toFixed(2)}`).join('  ');

@@ -11,8 +11,8 @@ PUBLISH_HZ = 20.0
 
 # torobo2026_ros2_rp/pscon_node.cpp の実装に合わせる:
 # axes[3]=st_rx, axes[4]=st_ry, axes[6]=cross_bt(-1/0/1のみ判定、連続値不可)
-AXIS_ST_RX = 3
-AXIS_ST_RY = 4
+AXIS_ST_RX = 4
+AXIS_ST_RY = 5
 AXIS_CROSS_BT_L = 6
 AXIS_CROSS_BT_R = 7
 
@@ -34,6 +34,13 @@ COMMAND_BUTTON_MAP = {
     'gate': 5,             # R1: 城門設置高さ
     'descend_adjust': 6,   # L2: 降下微調整
     'checkpoint': 7,       # R2: 関所設置高さ
+}
+# 十字キー -> axes index（pscon_node.cpp側の実PS4パッドaxes[0..3]配置に合わせる）
+DPAD_AXIS_MAP = {
+    'dpad_up': 0,
+    'dpad_right': 1,
+    'dpad_left': 2,
+    'dpad_down': 3,
 }
 
 # ボタンは押しっぱなし連射を防ぐため、受信のたびにこの秒数だけ1を出すエッジパルスにする
@@ -63,6 +70,7 @@ class CmdVelToJoyNode(Node):
         self._last_cmd_time = None  # 一度も受信していなければ None（＝デッドマン発動中として扱う）
         self._estop_latched = False
         self._pulse_until = {}  # button index -> パルス終了時刻(rclpy.time.Time)
+        self._axis_pulse_until = {}  # 追加: axis index -> パルス終了時刻(十字キー用)
 
         self.create_timer(1.0 / PUBLISH_HZ, self._publish)
         self.get_logger().info('cmd_vel_to_joy (axes+buttons merge) started')
@@ -82,6 +90,9 @@ class CmdVelToJoyNode(Node):
         elif cmd in COMMAND_BUTTON_MAP:
             idx = COMMAND_BUTTON_MAP[cmd]
             self._pulse_until[idx] = self.get_clock().now() + Duration(seconds=BUTTON_PULSE_S)
+        elif cmd in DPAD_AXIS_MAP:  # 追加
+            idx = DPAD_AXIS_MAP[cmd]
+            self._axis_pulse_until[idx] = self.get_clock().now() + Duration(seconds=BUTTON_PULSE_S)
         else:
             self.get_logger().warn(f'unknown /robot/command id ignored: {cmd!r}')
 
@@ -98,6 +109,11 @@ class CmdVelToJoyNode(Node):
         buttons = [0] * BUTTONS_SIZE
 
         if not stopped:
+            now = self.get_clock().now()
+            for idx, until in self._axis_pulse_until.items():
+                if now < until:
+                    axes[idx] = 1.0
+
             axes[AXIS_ST_RY] = self._last_cmd.linear.x
             axes[AXIS_ST_RX] = self._last_cmd.linear.y
             if self._last_cmd.angular.z > TURN_DEADZONE:
@@ -105,7 +121,7 @@ class CmdVelToJoyNode(Node):
             elif self._last_cmd.angular.z < -TURN_DEADZONE:
                 axes[AXIS_CROSS_BT_R] = 1.0
 
-            now = self.get_clock().now()
+            #now = self.get_clock().now()
             for idx, until in self._pulse_until.items():
                 if now < until:
                     buttons[idx] = 1
