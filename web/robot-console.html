@@ -114,14 +114,20 @@
   .taskDot{width:7px;height:7px;padding:0;border:none;border-radius:50%;background:var(--line);
     cursor:pointer;transition:transform .15s,background .15s}
   .taskDot.active{background:var(--warn);transform:scale(1.5)}
-  #taskButtons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-  #taskExec{padding:15px;font-size:15px;font-weight:800;letter-spacing:.02em;border:none;
+
+  /* 操作バー: #scrollareaの外（bodyのflex子として常時表示、position:fixedは使わない）。
+     端末を横持ちした際に左右の端に近い位置で親指が届くよう、実行=左寄り小さめ／次へ=右寄り大きめに分ける */
+  #taskActionBar{flex:0 0 auto;display:grid;grid-template-columns:1fr 1.5fr;gap:10px;
+    padding-bottom:max(0px,env(safe-area-inset-bottom))}
+  #taskExec{padding:20px 10px;font-size:16px;font-weight:800;letter-spacing:.02em;border:none;border-radius:14px;
     background:linear-gradient(180deg,#4bcaa8,var(--ok));color:#04211b;
     box-shadow:0 8px 18px -8px rgba(63,184,154,.6)}
   #taskExec:active{box-shadow:0 3px 10px -6px rgba(63,184,154,.55);transform:translateY(1px)}
-  #taskAdvance{padding:15px;font-size:15px;font-weight:700;background:var(--panel2);
-    border:1px solid var(--warn);color:var(--warn)}
-  #taskAdvance:disabled{opacity:.3;cursor:default}
+  #taskAdvance{padding:20px 10px;font-size:19px;font-weight:800;border-radius:14px;
+    background:linear-gradient(180deg,#ffc267,var(--warn));color:#3a2400;border:none;
+    box-shadow:0 8px 20px -8px rgba(239,162,58,.65)}
+  #taskAdvance:active{box-shadow:0 3px 10px -6px rgba(239,162,58,.6);transform:translateY(1px)}
+  #taskAdvance:disabled{opacity:.3;cursor:default;box-shadow:none}
 </style>
 </head>
 <body>
@@ -153,10 +159,6 @@
         <button id="taskNext" class="taskSide"><span class="arrow">▶</span><span class="taskLbl"></span></button>
       </div>
       <div id="taskDots"></div>
-      <div id="taskButtons">
-        <button id="taskExec">✓ 実行</button>
-        <button id="taskAdvance">次へ →</button>
-      </div>
     </div>
 
     <div class="row" style="justify-content:flex-end">
@@ -211,6 +213,11 @@
   <img src="./con_image.jpg" alt="con" id="usageImg">
 </div>
 </div><!-- /#scrollarea -->
+
+<div id="taskActionBar">
+  <button id="taskExec">✓ 実行</button>
+  <button id="taskAdvance">次へ →</button>
+</div>
 
 <script>
 // ===== 設定（機種・機体に合わせてここを編集） =====
