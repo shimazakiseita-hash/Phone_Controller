@@ -4,6 +4,7 @@ from rclpy.duration import Duration
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
 from std_msgs.msg import String
+from std_msgs.msg import UInt8
 
 AXES_SIZE = 8
 BUTTONS_SIZE = 8
@@ -43,9 +44,32 @@ DPAD_AXIS_MAP = {
     'dpad_down': 3,
 }
 
+# シーケンス情報 赤青別
+SEQUENCE_MAP = {
+    'not_started': 0b00000000,
+    'sequence_red_1': 0b00000001,
+    'sequence_red_2': 0b00000010,
+    'sequence_red_3': 0b00000011,
+    'sequence_red_4': 0b00000100,
+    'sequence_red_5': 0b00000101,
+    'sequence_red_6': 0b00000110,
+    'sequence_red_7': 0b00000111,
+    'sequence_red_8': 0b00001000,
+    'sequence_red_9': 0b00001001,
+
+    'sequence_blue_1': 0b10000001,
+    'sequence_blue_2': 0b10000010,
+    'sequence_blue_3': 0b10000011,
+    'sequence_blue_4': 0b10000100,
+    'sequence_blue_5': 0b10000101,
+    'sequence_blue_6': 0b10000110,
+    'sequence_blue_7': 0b10000111,
+    'sequence_blue_8': 0b10001000,
+    'sequence_blue_9': 0b10001001,
+}
+
 # ボタンは押しっぱなし連射を防ぐため、受信のたびにこの秒数だけ1を出すエッジパルスにする
 BUTTON_PULSE_S = 0.15
-
 
 class CmdVelToJoyNode(Node):
     """/cmd_vel(Twist,軸) と /robot/command(String,ボタン) をマージして /joy を20Hz固定で publish する。
@@ -63,6 +87,7 @@ class CmdVelToJoyNode(Node):
     def __init__(self):
         super().__init__('cmd_vel_to_joy')
         self._joy_pub = self.create_publisher(Joy, '/joy', 10)
+        self._sequence_pub = self.create_publisher(UInt8, '/sequence', 10) #シーケンス用
         self.create_subscription(Twist, '/cmd_vel', self._on_cmd_vel, 10)
         self.create_subscription(String, '/robot/command', self._on_command, 10)
 
@@ -131,6 +156,10 @@ class CmdVelToJoyNode(Node):
         joy.axes = axes
         joy.buttons = buttons
         self._joy_pub.publish(joy)
+
+        sq_msg = UInt8()
+        sq_msg.data = self._sequence
+        self._sequence_pub.publish(sq_msg)
 
 
 def main(args=None):
