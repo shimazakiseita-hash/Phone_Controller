@@ -90,15 +90,38 @@
     opacity:.94}
   #usageImg{width:65%;display:block;margin:0 auto;border-radius:8px}
 
-  /* commands: 実PS4パッドのアーム8アクションに1:1対応するため8個並ぶ */
-  #cmds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-  .cmd{padding:16px 10px;font-size:14px;line-height:1.3;font-weight:700;letter-spacing:.02em;border-radius:12px;
-    background:var(--c,var(--panel2));border:1px solid var(--c,var(--line));color:var(--c-fg,var(--txt))}
-  .cmd:active{transform:translateY(1px);filter:brightness(1.12)}
-
-
   .hint{font-size:11px;color:var(--muted);text-align:center}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* タスク管理（半自動シーケンス用UI骨組み。実行の中身＝シーケンス連携は後日実装） */
+  #taskCarousel{justify-content:space-between;align-items:stretch;gap:8px;margin:2px 0 4px}
+  .taskSide{flex:0 0 22%;text-align:center;padding:10px 4px;border-radius:12px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-size:11px;
+    opacity:.55;transform:scale(.94);transition:opacity .18s,transform .18s}
+  .taskSide:active:not(:disabled){transform:scale(.9)}
+  .taskSide .arrow{font-size:17px;display:block;margin-bottom:3px;color:var(--warn)}
+  .taskSide:disabled{opacity:.12}
+  #taskCurrent{flex:1 1 auto;text-align:center;padding:18px 10px;border-radius:16px;position:relative;
+    background:linear-gradient(180deg,rgba(239,162,58,.16),rgba(239,162,58,.02) 70%),var(--panel2);
+    border:1px solid rgba(239,162,58,.55);
+    box-shadow:0 10px 26px -12px rgba(239,162,58,.45),inset 0 0 0 1px rgba(239,162,58,.06)}
+  #taskCurrent.pulse{animation:taskPulse .32s ease}
+  @keyframes taskPulse{0%{transform:scale(.95);opacity:.7}100%{transform:scale(1);opacity:1}}
+  #taskNum{display:inline-block;font-size:10px;font-weight:700;color:var(--warn);letter-spacing:.14em;
+    background:rgba(239,162,58,.14);border:1px solid rgba(239,162,58,.4);border-radius:999px;padding:3px 11px}
+  #taskLabel{font-size:23px;font-weight:800;margin-top:9px;letter-spacing:.01em}
+  #taskDots{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+  .taskDot{width:7px;height:7px;padding:0;border:none;border-radius:50%;background:var(--line);
+    cursor:pointer;transition:transform .15s,background .15s}
+  .taskDot.active{background:var(--warn);transform:scale(1.5)}
+  #taskButtons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  #taskExec{padding:15px;font-size:15px;font-weight:800;letter-spacing:.02em;border:none;
+    background:linear-gradient(180deg,#4bcaa8,var(--ok));color:#04211b;
+    box-shadow:0 8px 18px -8px rgba(63,184,154,.6)}
+  #taskExec:active{box-shadow:0 3px 10px -6px rgba(63,184,154,.55);transform:translateY(1px)}
+  #taskAdvance{padding:15px;font-size:15px;font-weight:700;background:var(--panel2);
+    border:1px solid var(--warn);color:var(--warn)}
+  #taskAdvance:disabled{opacity:.3;cursor:default}
 </style>
 </head>
 <body>
@@ -119,7 +142,22 @@
       <div class="stat" id="link"><div class="lbl">リンク鮮度</div><div class="v" id="age">--- ms</div></div>
     </div>
 
-    <div id="cmds"></div>
+    <div id="taskPanel" class="panel">
+      <div class="lbl" style="margin-bottom:6px">タスク管理</div>
+      <div class="row" id="taskCarousel">
+        <button id="taskPrev" class="taskSide"><span class="arrow">◀</span><span class="taskLbl"></span></button>
+        <div id="taskCurrent">
+          <span id="taskNum"></span>
+          <div id="taskLabel"></div>
+        </div>
+        <button id="taskNext" class="taskSide"><span class="arrow">▶</span><span class="taskLbl"></span></button>
+      </div>
+      <div id="taskDots"></div>
+      <div id="taskButtons">
+        <button id="taskExec">✓ 実行</button>
+        <button id="taskAdvance">次へ →</button>
+      </div>
+    </div>
 
     <div class="row" style="justify-content:flex-end">
       <span class="pill mono" id="rate">0 Hz</span>
@@ -270,15 +308,49 @@ let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマッ�
 let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
 const demo=()=>$('#demo').checked;
 
-// ---- 半自動コマンドボタン生成（常時表示。実PS4パッドのアーム8アクションに対応） ----
-const cmdBox=$('#cmds');
-CFG.commands.forEach(c=>{
-  const b=document.createElement('button'); b.className='cmd'; b.textContent=c.label;
-  if(c.color) b.style.setProperty('--c',c.color);
-  if(c.colorFg) b.style.setProperty('--c-fg',c.colorFg);
-  b.onclick=()=>sendCommand(c.id);
-  cmdBox.appendChild(b);
+// ===== タスク管理（半自動シーケンスUIの骨組み。実行時にどの動作を送るかは後日実装） =====
+const TASKS = [
+  {label:'ボール回収'},
+  {label:'関所1'},
+  {label:'ボール回収'},
+  {label:'ボール回収'},
+  {label:'射出'},
+  {label:'ボール回収'},
+  {label:'ボール回収'},
+  {label:'関所2'},
+  {label:'城門'},
+];
+let taskIndex = 0;
+const taskDotsBox=$('#taskDots');
+TASKS.forEach((t,i)=>{
+  const d=document.createElement('button'); d.type='button'; d.className='taskDot';
+  d.title=`${i+1}. ${t.label}`;
+  d.onclick=()=>goTask(i);
+  taskDotsBox.appendChild(d);
 });
+function renderTask(){
+  const n=TASKS.length;
+  $('#taskNum').textContent = `TASK ${taskIndex+1} / ${n}`;
+  $('#taskLabel').textContent = TASKS[taskIndex].label;
+  const prev=$('#taskPrev'), next=$('#taskNext');
+  prev.disabled = taskIndex<=0;
+  prev.querySelector('.taskLbl').textContent = taskIndex>0 ? TASKS[taskIndex-1].label : '';
+  next.disabled = taskIndex>=n-1;
+  next.querySelector('.taskLbl').textContent = taskIndex<n-1 ? TASKS[taskIndex+1].label : '';
+  $('#taskAdvance').disabled = taskIndex>=n-1;
+  $$('#taskDots .taskDot').forEach((d,i)=>d.classList.toggle('active', i===taskIndex));
+  const cur=$('#taskCurrent');
+  cur.classList.remove('pulse'); void cur.offsetWidth; cur.classList.add('pulse');
+}
+function goTask(i){ taskIndex=Math.max(0,Math.min(TASKS.length-1,i)); renderTask(); }
+$('#taskPrev').onclick=()=>goTask(taskIndex-1);
+$('#taskNext').onclick=()=>goTask(taskIndex+1);
+$('#taskAdvance').onclick=()=>goTask(taskIndex+1);
+$('#taskExec').onclick=()=>{
+  // TODO: タスク→機構コマンドのシーケンス実行は後日実装。今はUI骨組みのみ。
+  console.log('[task] exec', taskIndex+1, TASKS[taskIndex].label);
+};
+renderTask();
 
 // ===== Gamepad（Bluetooth接続の物理コントローラ。外部コントローラ専用のためタッチ入力は無し）=====
 let gpadActive=false, advOpen=false;
