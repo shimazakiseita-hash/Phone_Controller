@@ -96,6 +96,7 @@ class CmdVelToJoyNode(Node):
         self._estop_latched = False
         self._pulse_until = {}  # button index -> パルス終了時刻(rclpy.time.Time)
         self._axis_pulse_until = {}  # 追加: axis index -> パルス終了時刻(十字キー用)
+        self._sequence = SEQUENCE_MAP['not_started']
 
         self.create_timer(1.0 / PUBLISH_HZ, self._publish)
         self.get_logger().info('cmd_vel_to_joy (axes+buttons merge) started')
@@ -118,6 +119,8 @@ class CmdVelToJoyNode(Node):
         elif cmd in DPAD_AXIS_MAP:  # 追加
             idx = DPAD_AXIS_MAP[cmd]
             self._axis_pulse_until[idx] = self.get_clock().now() + Duration(seconds=BUTTON_PULSE_S)
+        elif cmd in SEQUENCE_MAP:
+            self._sequence = SEQUENCE_MAP[cmd]
         else:
             self.get_logger().warn(f'unknown /robot/command id ignored: {cmd!r}')
 
