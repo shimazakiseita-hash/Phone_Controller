@@ -354,8 +354,10 @@ $('#taskPrev').onclick=()=>goTask(taskIndex-1);
 $('#taskNext').onclick=()=>goTask(taskIndex+1);
 $('#taskAdvance').onclick=()=>goTask(taskIndex+1);
 $('#taskExec').onclick=()=>{
-  // TODO: タスク→機構コマンドのシーケンス実行は後日実装。今はUI骨組みのみ。
-  console.log('[task] exec', taskIndex+1, TASKS[taskIndex].label);
+  // フィールドマップのRED/BLUEトグル（CFG.team）をそのまま自チーム色として使い、
+  // /robot/command に "sequence_<team>_<タスク番号1〜9>" を送る。
+  // cmd_vel_to_joy.py 側の SEQUENCE_MAP が受けて /sequence(UInt8) に変換する。
+  sendCommand(`sequence_${CFG.team}_${taskIndex+1}`);
 };
 renderTask();
 
