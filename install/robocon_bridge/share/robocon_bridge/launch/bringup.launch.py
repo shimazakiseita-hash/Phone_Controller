@@ -1,4 +1,5 @@
 from launch import LaunchDescription
+from launch.actions import ExecuteProcess
 from launch_ros.actions import Node
 
 
@@ -30,5 +31,11 @@ def generate_launch_description():
         name='nav_node',
         output='screen',
     )
+
+    ExecuteProcess(
+        cmd=['python3', '-m', 'http.server', '8080'],
+        cwd='/home/ubuntu/Phone_Controller/web',
+        output='screen',
+    ),
 
     return LaunchDescription([rosbridge, mock, cmd_vel_to_joy, nav_node])
