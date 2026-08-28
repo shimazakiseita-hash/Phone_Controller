@@ -32,9 +32,9 @@ def generate_launch_description():
         output='screen',
     )
 
-    ExecuteProcess(
+    web_server = ExecuteProcess(
         cmd=['python3', '-m', 'http.server', '8080'],
         cwd='/home/ubuntu/Phone_Controller/web',
-    ),
+    )
 
-    return LaunchDescription([rosbridge, mock, cmd_vel_to_joy, nav_node])
+    return LaunchDescription([rosbridge, mock, cmd_vel_to_joy, nav_node,web_server])
