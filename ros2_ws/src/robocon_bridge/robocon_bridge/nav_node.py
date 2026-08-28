@@ -6,8 +6,9 @@ from geometry_msgs.msg import PoseStamped, Twist
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
-# 到達判定・速度上限・ゲインは仮置き。実際の運動学と一緒に詰める
+# 到達判定・速度上限・ゲインは仮置き。実機で走らせながら調整する
 REACH_DIST_THRESHOLD_M = 0.15
+REACH_ANGLE_THRESHOLD_RAD = 0.26  # 約15度。ここから先は操縦者が手動で微調整する前提なので粗くてよい
 CMD_VEL_MAX_LIN = 0.3
 CMD_VEL_MAX_ANG = 0.5
 GOTO_KP_LIN = 1.0
@@ -16,18 +17,34 @@ GOTO_KP_ANG = 1.0
 TICK_HZ = 20.0
 
 
-class NavNode(Node):
-    """/robot/goal を受けて go-to-point 走行をアクティブ化するノードの骨格。
+def _yaw_from_quaternion(q) -> float:
+    """クォータニオン(Z軸回転のみ想定)からyaw(rad)を取り出す。"""
+    return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
-    運動学・制御は未実装。今回はトピック配線と
-    goal受信→アクティブ→cancel/到達→解除、の状態遷移だけを正しく作る。
+
+def _normalize_angle(a: float) -> float:
+    """角度を[-pi, pi]に正規化する。"""
+    return math.atan2(math.sin(a), math.cos(a))
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+class NavNode(Node):
+    """/robot/goal を受けて go-to-point 走行を行うノード。
+
+    全方向駆動(ホロノミック)前提: 目標との位置誤差を機体座標系に回転させてから
+    linear.x/yへ、目標角度との差をangular.zへ、それぞれ独立に比例制御で流す。
     """
 
     def __init__(self):
         super().__init__('nav_node')
         self._active = False
-        self._goal_xy = None   # (x, y) map frame, m
-        self._pose_xy = None   # (x, y) map frame, m（/robot/telemetry の pose）
+        self._goal_xy = None      # (x, y) map frame, m
+        self._goal_theta = None   # rad, map frame
+        self._pose_xy = None      # (x, y) map frame, m（/robot/telemetry の pose）
+        self._pose_theta = None   # rad
 
         self._cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self._nav_state_pub = self.create_publisher(String, '/robot/nav_state', 10)
@@ -37,17 +54,19 @@ class NavNode(Node):
         self.create_subscription(String, '/robot/telemetry', self._on_telemetry, 10)
 
         self.create_timer(1.0 / TICK_HZ, self._tick)
-        self.get_logger().info('nav_node (skeleton, no kinematics) started')
+        self.get_logger().info('nav_node started')
 
     def _on_goal(self, msg: PoseStamped):
         self._goal_xy = (msg.pose.position.x, msg.pose.position.y)
+        self._goal_theta = _yaw_from_quaternion(msg.pose.orientation)
         self._active = True
-        self.get_logger().info(f'goal received {self._goal_xy}, nav -> auto')
+        self.get_logger().info(f'goal received {self._goal_xy}, theta={self._goal_theta:.2f}, nav -> auto')
 
     def _on_goal_cancel(self, msg: Bool):
         if msg.data and self._active:
             self._active = False
             self._goal_xy = None
+            self._goal_theta = None
             self.get_logger().info('goal_cancel received, nav -> manual')
 
     def _on_telemetry(self, msg: String):
@@ -59,24 +78,40 @@ class NavNode(Node):
         if pose is None:
             return
         self._pose_xy = (float(pose['x']), float(pose['y']))
+        self._pose_theta = float(pose['theta'])
 
     def _reached_goal(self) -> bool:
-        if self._goal_xy is None or self._pose_xy is None:
+        if self._goal_xy is None or self._pose_xy is None or self._pose_theta is None:
             return False
         dx = self._goal_xy[0] - self._pose_xy[0]
         dy = self._goal_xy[1] - self._pose_xy[1]
-        return math.hypot(dx, dy) <= REACH_DIST_THRESHOLD_M
+        dtheta = _normalize_angle(self._goal_theta - self._pose_theta)
+        return math.hypot(dx, dy) <= REACH_DIST_THRESHOLD_M and abs(dtheta) <= REACH_ANGLE_THRESHOLD_RAD
 
     def _tick(self):
         if self._active and self._reached_goal():
             self._active = False
             self._goal_xy = None
+            self._goal_theta = None
             self.get_logger().info('goal reached, nav -> manual')
 
-        if self._active:
-            # TODO: go-to-point制御をここに実装する（GOTO_KP_LIN/GOTO_KP_ANG,
-            # CMD_VEL_MAX_LIN/CMD_VEL_MAX_ANG を使って goal_xy - pose_xy から /cmd_vel を計算）。
-            # 現状はプレースホルダとして 0 を publish するだけ。
+        if self._active and self._pose_xy is not None and self._pose_theta is not None:
+            ex = self._goal_xy[0] - self._pose_xy[0]
+            ey = self._goal_xy[1] - self._pose_xy[1]
+            c, s = math.cos(self._pose_theta), math.sin(self._pose_theta)
+            # 世界座標系の位置誤差(ex,ey) -> 機体座標系へ回転(world->body、機体はホロノミックなので
+            # 向きに関係なくこの方向へそのまま並進できる)
+            body_x = ex * c + ey * s
+            body_y = -ex * s + ey * c
+            dtheta = _normalize_angle(self._goal_theta - self._pose_theta)
+
+            cmd = Twist()
+            cmd.linear.x = _clamp(GOTO_KP_LIN * body_x, -CMD_VEL_MAX_LIN, CMD_VEL_MAX_LIN)
+            cmd.linear.y = _clamp(GOTO_KP_LIN * body_y, -CMD_VEL_MAX_LIN, CMD_VEL_MAX_LIN)
+            cmd.angular.z = _clamp(GOTO_KP_ANG * dtheta, -CMD_VEL_MAX_ANG, CMD_VEL_MAX_ANG)
+            self._cmd_vel_pub.publish(cmd)
+        elif self._active:
+            # まだ自己位置(pose)を受信できていない場合は動かさない
             self._cmd_vel_pub.publish(Twist())
 
         state = String()

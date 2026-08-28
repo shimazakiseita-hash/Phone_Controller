@@ -199,7 +199,10 @@
       </div>
       <div class="row" id="navRow" style="justify-content:space-between;margin-bottom:6px">
         <span class="pill mono" id="navMode">モード: 手動</span>
-        <button id="goalCancel">移動キャンセル</button>
+        <div class="row" style="gap:6px">
+          <button id="resetPose">初期位置合わせ</button>
+          <button id="goalCancel">移動キャンセル</button>
+        </div>
       </div>
       <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
       <div class="hint" id="tapHint" style="text-align:left;margin-top:4px">タップで目標地点へ移動指示（/robot/goal）</div>
@@ -228,6 +231,7 @@ const CFG = {
   telemTopic:   '/robot/telemetry',         // std_msgs/String の中身は JSON
   goalTopic:       '/robot/goal',           messagePoseStamped: 'geometry_msgs/msg/PoseStamped',
   goalCancelTopic: '/robot/goal_cancel',    messageBool: 'std_msgs/msg/Bool',
+  resetPoseTopic:  '/robot/reset_pose',     messageEmpty: 'std_msgs/msg/Empty',
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
@@ -285,16 +289,42 @@ const CFG = {
       red:  {x0:0.05, y0:0.05, x1:0.85, y1:0.85},
       blue: {x0:9.15, y0:0.05, x1:9.95, y1:0.85},
     },
-    castleGate: {cx:5.0, cy:2.6, w:0.5, h:0.3, label:'城門'},
+    // 城門: 底面500mm×795mm(フィールドオブジェクトについて_v1.0より、トラス部分は床面積に含めない)
+    castleGate: {cx:5.0, cy:2.6, w:0.5, h:0.795, label:'城門'},
+    // 関所: 中深皿9号、外径122mm(半径0.061m)を床にビス3箇所で固定
     checkpoints: {
-      red:  [{x:4.45,y:0.75,r:0.15}, {x:4.45,y:3.625,r:0.15}],
-      blue: [{x:5.45,y:0.75,r:0.15}, {x:5.45,y:3.625,r:0.15}],
+      red:  [{x:4.45,y:0.75,r:0.061}, {x:4.45,y:3.625,r:0.061}],
+      blue: [{x:5.45,y:0.75,r:0.061}, {x:5.45,y:3.625,r:0.061}],
     },
+    // 石垣: 600mm×600mm(フィールドオブジェクトについて_v1.0より)
     castleBase: [
-      {cx:2.16, cy:10.8, size:0.6, label:'石垣'},
-      {cx:7.84, cy:10.8, size:0.6, label:'石垣'},
+      // エリア3(y:8.875〜12.0)の中央、各自陣半面(x:0〜5 / x:5〜10)の中央に配置
+      {cx:2.5, cy:10.4375, size:0.6, label:'石垣'},
+      {cx:7.5, cy:10.4375, size:0.6, label:'石垣'},
     ],
-    ballSpots: [],   // 各種ボールスポット配置図から後で追記（{x,y,label?}の配列）
+    // ボール置き場: 3Dプリンタ製の円柱(養生テープ挿入)。PDFに直径の明記が無いため半径0.05mは仮値、要確認。
+    // 座標はRED基準の自陣外側エッジからの距離(m)。描画時にteamX()でBLUE側もミラー
+    ballSpots: [
+      {x:0.15,   y:3.875, r:0.05, label:'回収1'},
+      {x:0.15,   y:5.175, r:0.05, label:'回収2'},
+      {x:0.15,   y:6.725, r:0.05, label:'回収3'},
+      {x:4.175,  y:8.875, r:0.05, label:'回収4'},
+      {x:0.75,   y:8.875, r:0.05, label:'回収5'},
+    ],
+    // ---- エリア2内のフェンスと通過可能な隙間(RED基準、y=境界、x=隙間中心)。BLUEはx反転でミラー ----
+    // strip: 0=エリア1 [0,4.375) / 1=エリア2下 [4.375,5.875) / 2=エリア2中 [5.875,7.375) /
+    //        3=エリア2上 [7.375,8.875] / 4=エリア3(通行不可、到達目標にも無い)
+    // gaps[i] は strip i と strip i+1 の間の隙間。null は完全に塞がっていて通過不可。
+    stripBoundaries: [4.375, 5.875, 7.375, 8.875],
+    stripGaps: [
+      {y:4.375, x:3.9625},  // エリア1/2境界: 中央寄りが隙間
+      {y:5.875, x:0.9625},  // エリア2下段/中段: 外側寄りが隙間
+      {y:7.375, x:3.9625},  // エリア2中段/上段: 中央寄りが隙間
+      null,                  // エリア2/3境界: 完全に塞がっている
+    ],
+    // 描画用: 各フェンスの「自陣外側エッジからの距離(m)」での塞がってる区間[d0,d1]。隙間はこの範囲外。
+    // null(エリア2/3境界)は全幅(0〜4.925)が塞がってる
+    fenceBlockedRanges: [ [0,3.0], [1.925,4.925], [0,3.0], [0,4.925] ],
   },
   // ---- チーム別の pose→フィールド座標変換。推定側の座標規約に合わせてox/oy/sx/sy/thetaを調整 ----
   teams: {
@@ -311,22 +341,25 @@ const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 let ros=null, connected=false;
 let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
-let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null;
+let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null;
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
 let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
 const demo=()=>$('#demo').checked;
 
-// ===== タスク管理（半自動シーケンスUIの骨組み。実行時にどの動作を送るかは後日実装） =====
+// ===== タスク管理 =====
+// target: RED基準のフィールド座標(m)・角度(rad, y軸正方向=奥/城側を0、反時計回りが正)。
+// フィールド寸法図・各種ボールスポット配置図(2026/4/1版)から実測。BLUE側はx反転で自動ミラー。
+// 機構コマンド(旧sequence_data方式)との連携は今回は対象外、実行ボタンは目標地点への自動移動のみ行う。
 const TASKS = [
-  {label:'ボール回収'},
-  {label:'関所1'},
-  {label:'ボール回収'},
-  {label:'ボール回収'},
-  {label:'射出'},
-  {label:'ボール回収'},
-  {label:'ボール回収'},
-  {label:'関所2'},
-  {label:'城門'},
+  {label:'ボール回収', target:{x:0.15,   y:3.875, theta:0}},
+  {label:'関所1',      target:{x:4.45,   y:3.625, theta:-Math.PI/2}},
+  {label:'ボール回収', target:{x:0.15,   y:5.175, theta:Math.PI/2}},
+  {label:'ボール回収', target:{x:0.15,   y:6.725, theta:Math.PI/2}},
+  {label:'射出',       target:{x:2.4625, y:8.275, theta:0}},
+  {label:'ボール回収', target:{x:4.175,  y:8.875, theta:0}},
+  {label:'ボール回収', target:{x:0.75,   y:8.875, theta:0}},
+  {label:'関所2',      target:{x:4.45,   y:0.75,  theta:-Math.PI/2}},
+  {label:'城門',       target:{x:5.0,    y:2.2875,theta:-Math.PI/2}},
 ];
 let taskIndex = 0;
 const taskDotsBox=$('#taskDots');
@@ -351,14 +384,63 @@ function renderTask(){
   cur.classList.remove('pulse'); void cur.offsetWidth; cur.classList.add('pulse');
 }
 function goTask(i){ taskIndex=Math.max(0,Math.min(TASKS.length-1,i)); renderTask(); }
+
+// ---- エリア2のフェンスを避けるための経路生成(RED基準で計算してから最後にチーム変換) ----
+function stripIndexOf(y){
+  const b=CFG.field.stripBoundaries;
+  if(y<b[0]) return 0;
+  if(y<b[1]) return 1;
+  if(y<b[2]) return 2;
+  if(y<=b[3]) return 3;   // ちょうど境界上のタスク(回収4/5等)はエリア2上段側として扱う
+  return 4;               // エリア3(通行不可、目標にも無い想定)
+}
+// curFieldY: 現在位置のフィールドy(RED/BLUE共通、yは反転しないのでそのまま使える)
+// target: RED基準の{x,y,theta}。戻り値はRED基準の経由地配列(最後の要素が本来の目標)
+// フェンスの手前/奥でx位置を合わせてから直進で通過するための余裕(m)。ロボット800×800mm(半分0.4m)に対し
+// 十分な余白を確保した上で、斜めに接近してフェンスの角に接触しないようにする
+const FENCE_CROSS_MARGIN = 0.5;
+function buildRedFramePath(curFieldY, target){
+  const from=stripIndexOf(curFieldY), to=stripIndexOf(target.y);
+  const path=[];
+  const dir = to>from ? 1 : -1;
+  let s=from;
+  while(s!==to){
+    const gapIdx = dir>0 ? s : s-1;
+    const gap = CFG.field.stripGaps[gapIdx];
+    if(!gap){ console.warn('経路上に完全に塞がったフェンスがあり自動生成できません(gap#'+gapIdx+')'); break; }
+    // 手前(現在のstrip側)でx位置を合わせてから、奥(次のstrip側)まで直進で通過する2点1組
+    path.push({x:gap.x, y:gap.y - dir*FENCE_CROSS_MARGIN, theta:target.theta});
+    path.push({x:gap.x, y:gap.y + dir*FENCE_CROSS_MARGIN, theta:target.theta});
+    s+=dir;
+  }
+  path.push({x:target.x, y:target.y, theta:target.theta});
+  return path;
+}
+// RED基準の経由地1件を、現在のCFG.teamのフィールド座標に変換(xの反転・角度の反転)
+function toTeamField(wp){
+  const fx = CFG.team==='blue' ? (CFG.field.size.x - wp.x) : wp.x;
+  const fieldTheta = CFG.team==='blue' ? -wp.theta : wp.theta;
+  return {x:fx, y:wp.y, theta:fieldTheta};
+}
+let taskChainQueue = [];  // 実行ボタンで生成した残りの経由地(先頭がnavState=manual到達時に次に送るもの)
 $('#taskPrev').onclick=()=>goTask(taskIndex-1);
 $('#taskNext').onclick=()=>goTask(taskIndex+1);
 $('#taskAdvance').onclick=()=>goTask(taskIndex+1);
 $('#taskExec').onclick=()=>{
-  // フィールドマップのRED/BLUEトグル（CFG.team）をそのまま自チーム色として使い、
-  // /robot/command に "sequence_<team>_<タスク番号1〜9>" を送る。
-  // cmd_vel_to_joy.py 側の SEQUENCE_MAP が受けて /sequence(UInt8) に変換する。
-  sendCommand(`sequence_${CFG.team}_${taskIndex+1}`);
+  // TASKS[].target(RED基準)から、現在位置をもとにフェンスの隙間を経由する経路を作り、
+  // 先頭の経由地だけ送信。残りはtaskChainQueueに積んで、到達のたびに自動で次を送る。
+  // 中継地点は「中心がそこを通れば安全」という計算値なのでオフセット無し、最終目標だけ
+  // 前面→中心オフセットをかける(中継地点にかけるとフェンス通過マージンが削られてしまうため)。
+  const t = TASKS[taskIndex].target;
+  const curFieldY = lastPose ? poseToFieldXY(lastPose, CFG.team).y : t.y;
+  const redPath = buildRedFramePath(curFieldY, t);
+  const teamPath = redPath.map(toTeamField);
+  const lastIdx = teamPath.length-1;
+  const fc = frontToCenterField(teamPath[lastIdx].x, teamPath[lastIdx].y, teamPath[lastIdx].theta);
+  teamPath[lastIdx] = {x:fc.x, y:fc.y, theta:teamPath[lastIdx].theta};
+  taskChainQueue = teamPath.slice(1);
+  const first = teamPath[0];
+  sendGoal(first.x, first.y, first.theta);
 };
 renderTask();
 
@@ -466,6 +548,9 @@ function drawCircleF(ctx,tr,cx,cy,r,opt={}){
 let trailOn=true;
 $('#trailToggle').onchange=()=>{ trailOn=$('#trailToggle').checked; drawField(); };
 function setTeam(team){
+  // チーム切り替え前に進行中の移動・経由地チェーンを破棄する(切り替え後の座標変換で
+  // 積み残しの経由地を送ると、意図しない位置に機体が向かってしまうため)
+  clearGoal(); sendGoalCancel();
   CFG.team=team;
   $('#teamRed').classList.toggle('active', team==='red');
   $('#teamBlue').classList.toggle('active', team==='blue');
@@ -479,19 +564,29 @@ setTeam(CFG.team);
 updateNavModeUI();
 sizeFieldCanvas(); drawField();   // フィールドマップは常時表示なので起動時点でサイズ確定・初回描画
 
+// 自陣の外側エッジからの距離d(m) → 現在表示中チームの実フィールドx座標。RED:外側エッジ=0、BLUE:外側エッジ=size.x
+function teamX(d){
+  const teamCfg=CFG.teams[CFG.team];
+  return teamCfg.ourHalf==='left' ? d : CFG.field.size.x - d;
+}
 function drawField(){
   const cv=$('#fieldCanvas'); if(cv.width<2||cv.height<2) return;
   const ctx=cv.getContext('2d'); const F=CFG.field, team=CFG.team, teamCfg=CFG.teams[team];
+  const enemyColor=CFG.teams[team==='red'?'blue':'red'].color;
   const tr=fieldFit(cv,ourHalfExt());
   const MONO='ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace';   // canvasはCSS var()を解決しないため実フォント名で指定
   ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale); ctx.clip();   // 自陣フェンスの外側には何も描画しない
   ctx.fillStyle='#101a1f'; ctx.fillRect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale);
 
   // ゾーンごとにベタ塗りで色分け（半透明合成は使わない）。手前＝自陣スタート寄りほど濃く、奥＝城寄りほど淡く、
   // 3段階でくっきり切り替えることでエリア1/2/3の境界が一目でわかるようにする
   const ZONE_MIX=[0.35,0.55,0.75];
   F.zones.forEach((z,i)=>{
-    drawRectF(ctx,tr,0,z.y0,F.size.x,z.y1,{fill:mixHex(teamCfg.color,'#101a1f',ZONE_MIX[i]??0.75)});
+    // エリア3(自陣側)は敵の城領域扱いなので、自チーム色ではなく相手チームの色で塗る(進入不可)
+    const zoneColor = z.label==='エリア3' ? enemyColor : teamCfg.color;
+    drawRectF(ctx,tr,0,z.y0,F.size.x,z.y1,{fill:mixHex(zoneColor,'#101a1f',ZONE_MIX[i]??0.75)});
   });
 
   // グリッド: マイナー(1m,薄)とメジャー(2m,目盛りと同じ間隔でやや強め)の二段構成
@@ -542,6 +637,18 @@ function drawField(){
     ctx.fillText(z.label, lp.px, lp.py);
   });
 
+  // フェンス（エリア2内3本＋エリア2/3境界の完全遮断1本、隙間以外を太線で描く）
+  ctx.strokeStyle='#c7d0d4'; ctx.lineCap='round'; ctx.lineWidth=Math.max(3,tr.scale*0.05);
+  F.stripBoundaries.forEach((y,i)=>{
+    const [d0,d1]=F.fenceBlockedRanges[i];
+    const a=f2p(teamX(d0),y,tr), b=f2p(teamX(d1),y,tr);
+    ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke();
+  });
+  // 自陣の外周を一周囲うフェンス
+  { const ext=ourHalfExt();
+    drawRectF(ctx,tr,ext.x0,ext.y0,ext.x1,ext.y1,{stroke:'#c7d0d4', lw:Math.max(3,tr.scale*0.05)});
+  }
+
   // スタートゾーン（自チームのみ。写真の角の塗り潰し四角に寄せて濃い塗りに）
   const sz=F.startZones[team];
   drawRectF(ctx,tr,sz.x0,sz.y0,sz.x1,sz.y1,
@@ -562,7 +669,11 @@ function drawField(){
   });
 
   // 各種ボールスポット（配置図から後日追記。現状は空でよい）
-  F.ballSpots.forEach(b=>drawCircleF(ctx,tr,b.x,b.y,b.r||0.1,{fill:'#efa23a80', stroke:'#efa23a', label:b.label}));
+  F.ballSpots.forEach(b=>drawCircleF(ctx,tr,teamX(b.x),b.y,b.r||0.1,{fill:'#efa23a80', stroke:'#efa23a', label:b.label}));
+
+  // ここまでが地形の描画。ここから先(機体マーカー・軌跡・目標地点)はフィールド範囲外に出ても
+  // 非表示にはしたくないので、クリップを解除してから描く
+  ctx.restore();
 
   if(!lastPose){
     ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale);
@@ -615,26 +726,40 @@ addEventListener('resize',()=>{ sizeFieldCanvas(); drawField(); });
 addEventListener('orientationchange',()=>{ sizeFieldCanvas(); drawField(); });
 setInterval(drawField, 120); // 品質点滅・軌跡追従のための定期再描画（常時表示）
 
-// ===== 移動コマンドB（自陣表示タップ→/robot/goal）。運動学は空、配線と状態遷移のみ =====
-// フィールド座標(m) → pose座標系。poseToFieldXY の逆変換（theta は goal に使わないため変換しない）
+// ===== 移動コマンドB（自陣表示タップ→/robot/goal）。運動学はnav_node側で実装済み =====
+// フィールド座標(m) → pose座標系。poseToFieldXY の逆変換
 function fieldToPoseXY(fx,fy,team){
   const tr=CFG.teams[team].poseToField;
   return { x:(fx-tr.ox)/tr.sx, y:(fy-tr.oy)/tr.sy };
+}
+// フィールド角度(rad) → pose座標系の角度。上のxy版と対になる逆変換
+function fieldThetaToPoseTheta(fieldTheta,team){
+  const tr=CFG.teams[team].poseToField;
+  return (fieldTheta - tr.thetaOffset) / tr.thetaSign;
 }
 function updateNavModeUI(){
   const el=$('#navMode');
   el.textContent='モード: '+(navMode==='auto'?'自動移動中':'手動');
   el.style.color = navMode==='auto' ? 'var(--warn)' : '';
 }
-function clearGoal(){ goalActive=false; goalField=null; navMode='manual'; updateNavModeUI(); drawField(); }
-function sendGoal(fx,fy){
+function clearGoal(){ goalActive=false; goalField=null; navMode='manual'; taskChainQueue=[]; updateNavModeUI(); drawField(); }
+const ROBOT_HALF_SIZE_M = 0.4;   // 機体800×800mmの半分
+// 機体前面の目標位置(fx,fy,向きfieldTheta)→ 機体中心の位置に変換。向きベクトルは(-sin(theta),cos(theta))
+// なので、その逆方向に半分オフセットする。中継地点(フェンス通過用)には使わず、実際に対象物へ正対する
+// 最終目標にだけ使うこと(中継地点は中心がそこを通れば安全という前提の計算値のため)
+function frontToCenterField(fx,fy,fieldTheta){
+  return { x: fx + ROBOT_HALF_SIZE_M*Math.sin(fieldTheta), y: fy - ROBOT_HALF_SIZE_M*Math.cos(fieldTheta) };
+}
+// fx,fyは機体中心の目標位置(フィールド座標)として扱う
+function sendGoal(fx,fy,fieldTheta=0){
   goalField={x:fx,y:fy}; goalActive=true; navMode='auto'; updateNavModeUI(); drawField();
   if(demo()) return;
   if(connected && goalPub){
     const p=fieldToPoseXY(fx,fy,CFG.team);
+    const theta=fieldThetaToPoseTheta(fieldTheta,CFG.team);
     goalPub.publish(new ROSLIB.Message({
       header:{frame_id:'map', stamp:{sec:0,nanosec:0}},
-      pose:{position:{x:p.x,y:p.y,z:0}, orientation:{x:0,y:0,z:0,w:1}},
+      pose:{position:{x:p.x,y:p.y,z:0}, orientation:{x:0,y:0,z:Math.sin(theta/2),w:Math.cos(theta/2)}},
     }));
   }
 }
@@ -649,10 +774,18 @@ function onFieldTap(ev){
   const ext=ourHalfExt(), tr=fieldFit(cv,ext);
   const {fx,fy}=p2f(px,py,tr);
   if(fx<ext.x0||fx>ext.x1||fy<ext.y0||fy>ext.y1) return;   // 範囲外タップは無視
-  sendGoal(fx,fy);
+  if(fy>=CFG.field.stripBoundaries[CFG.field.stripBoundaries.length-1]) return;   // エリア3は進入不可なのでタップ無視
+  const c=frontToCenterField(fx,fy,0);   // タップ地点を機体前面とみなす(向きは0=奥向き固定)
+  sendGoal(c.x,c.y,0);
 }
 $('#fieldCanvas').addEventListener('pointerdown', onFieldTap);
 $('#goalCancel').onclick=()=>{ clearGoal(); sendGoalCancel(); };
+$('#resetPose').onclick=()=>{
+  // スタートゾーンに機体を正対させて置いた瞬間に押す想定。進行中の移動・軌跡も一緒に破棄する
+  clearGoal(); sendGoalCancel();
+  poseHistory=[]; lastPose=null; drawField();
+  if(!demo() && connected && resetPosePub) resetPosePub.publish(new ROSLIB.Message({}));
+};
 
 // ===== ROS 接続 =====
 function connect(){
@@ -666,11 +799,20 @@ function connect(){
     telem.subscribe(m=>{ try{applyTelem(JSON.parse(m.data)); lastTelem=performance.now();}catch(e){} });
     goalPub=new ROSLIB.Topic({ros,name:CFG.goalTopic,messageType:CFG.messagePoseStamped});
     goalCancelPub=new ROSLIB.Topic({ros,name:CFG.goalCancelTopic,messageType:CFG.messageBool});
+    resetPosePub=new ROSLIB.Topic({ros,name:CFG.resetPoseTopic,messageType:CFG.messageEmpty});
     navState=new ROSLIB.Topic({ros,name:CFG.navStateTopic,messageType:CFG.messageString});
     navState.subscribe(m=>{
       if(m.data!=='manual' && m.data!=='auto') return;
       navMode=m.data;
-      if(navMode==='manual'){ goalActive=false; goalField=null; }   // 到達 or チーム側キャンセルで消える
+      if(navMode==='manual'){
+        goalActive=false; goalField=null;   // 到達 or チーム側キャンセルで消える
+        // キャンセルされた場合はclearGoal()で既にtaskChainQueueが空になっているので、
+        // ここでキューが残っていれば「到達した」ケースとみなして次の経由地を自動送信する
+        if(taskChainQueue.length>0){
+          const next=taskChainQueue.shift();
+          sendGoal(next.x, next.y, next.theta);
+        }
+      }
       updateNavModeUI(); drawField();
     });
   });
