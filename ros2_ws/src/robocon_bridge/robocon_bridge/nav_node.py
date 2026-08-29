@@ -31,6 +31,17 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def _clamp_vec2(x: float, y: float, max_mag: float):
+    """(x,y)をmax_magまでの大きさに制限する。x/yを別々にクランプすると本来の移動方向が
+    崩れる(例: x方向だけ大きい誤差でもy方向にわずかに漏れがあると、両方が上限に張り付いて
+    45度の斜め移動になってしまう)ため、方向を保ったまま大きさだけ縮める。"""
+    mag = math.hypot(x, y)
+    if mag <= max_mag or mag == 0.0:
+        return x, y
+    scale = max_mag / mag
+    return x * scale, y * scale
+
+
 class NavNode(Node):
     """/robot/goal を受けて go-to-point 走行を行うノード。
 
@@ -106,8 +117,9 @@ class NavNode(Node):
             dtheta = _normalize_angle(self._goal_theta - self._pose_theta)
 
             cmd = Twist()
-            cmd.linear.x = _clamp(GOTO_KP_LIN * body_x, -CMD_VEL_MAX_LIN, CMD_VEL_MAX_LIN)
-            cmd.linear.y = _clamp(GOTO_KP_LIN * body_y, -CMD_VEL_MAX_LIN, CMD_VEL_MAX_LIN)
+            lx, ly = _clamp_vec2(GOTO_KP_LIN * body_x, GOTO_KP_LIN * body_y, CMD_VEL_MAX_LIN)
+            cmd.linear.x = lx
+            cmd.linear.y = ly
             cmd.angular.z = _clamp(GOTO_KP_ANG * dtheta, -CMD_VEL_MAX_ANG, CMD_VEL_MAX_ANG)
             self._cmd_vel_pub.publish(cmd)
         elif self._active:
