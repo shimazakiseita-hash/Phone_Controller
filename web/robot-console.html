@@ -36,11 +36,16 @@
   .dot{width:14px;height:14px;border-radius:50%;background:var(--bad);flex:none;
     box-shadow:0 0 0 3px rgba(226,80,63,.15);transition:background .15s,box-shadow .15s}
   .on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,184,154,.18)}
+  #conn .dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(239,162,58,.18)}   /* 接続中／再接続中 */
 
   /* connection bar */
   #conn{justify-content:space-between;flex-wrap:wrap;gap:8px}
   #conn input{flex:1;min-width:120px;background:var(--panel2);border:1px solid var(--line);
     color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+  #connStatus{flex-basis:100%;font-size:11px;color:var(--muted);margin-top:-2px}
+  #connStatus.ok{color:var(--ok)}
+  #connStatus.warn{color:var(--warn)}
+  #connStatus.bad{color:var(--bad)}
   button{font-family:var(--sans);font-size:14px;border:1px solid var(--line);background:var(--panel2);
     color:var(--txt);border-radius:8px;padding:9px 12px;cursor:pointer}
   button:active{transform:translateY(1px)}
@@ -90,6 +95,8 @@
   #usageZoom img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px}
 
   .hint{font-size:11px;color:var(--muted);text-align:center}
+  #staleHint{color:var(--bad);font-weight:600}
+  #fieldWrap.stale #fieldCanvasBox{opacity:.4;transition:opacity .2s}   /* テレメトリ途絶中は地図が古いことを示す */
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
   /* タスク管理（半自動シーケンス用UI骨組み。実行の中身＝シーケンス連携は後日実装） */
@@ -198,6 +205,7 @@
   <!-- <input id="url" value="ws://10.152.79.144:9090" inputmode="url" spellcheck="false"> -->
   <button id="btnConn">接続</button>
   <label class="switch"><input type="checkbox" id="demo" checked>デモ</label>
+  <span id="connStatus">未接続</span>
 </div>
 
 <div class="row" id="pageSwitch">
@@ -255,6 +263,9 @@
       <div class="hint" id="qualityHint" style="display:none;text-align:left;margin-top:4px">
         自己位置の信頼度低下: <span id="qualityVal" class="mono">--</span>
       </div>
+      <div class="hint" id="staleHint" style="display:none;text-align:left;margin-top:4px">
+        ⚠ 機体の応答が途絶しています（<span id="staleSec" class="mono">--</span>）
+      </div>
     </div>
   </div>
 </div>
@@ -306,6 +317,8 @@ const CFG = {
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
   pidGainTopic:    '/robot/pid_gain',       messageFloat32MultiArray: 'std_msgs/msg/Float32MultiArray',
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
+  reconnectMs: 3000,                        // 切断・接続失敗のあと自動で再接続を試みる間隔
+  telemStaleMs: 1200,                       // テレメトリがこの時間途絶えたら「応答途絶」を表示
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
   // 全機構コマンド（実Xbox系パッドのボタン配置A B X Y LB RB LTに1:1で対応させ、can_node.cpp
   // （torobo2026_ros2_rp、変更対象外）が解釈する定型アーム動作と一致させる）。
@@ -434,6 +447,7 @@ const CFG = {
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 let ros=null, connected=false;
+let wantConnected=false, hadConnection=false, reconnectTimer=null, connAttempt=0;   // 接続状態表示・自動再接続用
 let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
 let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null, gainPub=null;
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
@@ -995,11 +1009,34 @@ $('#resetPose').onclick=()=>{
 };
 
 // ===== ROS 接続 =====
+// A3: 接続状態を文字で常時表示。A4: 意図せず切れたら CFG.reconnectMs ごとに自動で再接続。
+function setConnStatus(text, cls){
+  const el=$('#connStatus');
+  el.textContent=text;
+  el.className=cls||'';
+  $('.dot').classList.toggle('warn', cls==='warn');
+}
+function updateConnBtn(){ $('#btnConn').textContent = wantConnected ? '切断' : '接続'; }
+
+function scheduleReconnect(){
+  if(reconnectTimer || !wantConnected) return;
+  setConnStatus(hadConnection ? '接続が切れました — 再接続中…' : '接続できません — 再試行中（接続先とWi-Fiを確認）',
+                hadConnection ? 'warn' : 'bad');
+  reconnectTimer=setTimeout(()=>{ reconnectTimer=null; if(wantConnected) connect(); }, CFG.reconnectMs);
+}
+
 function connect(){
   if(typeof ROSLIB==='undefined'){ alert('roslib.min.js が見つかりません。HTMLと同じフォルダに置いてください。今はデモのまま動作します。'); return; }
-  disconnect();
+  if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null; }
+  const myAttempt=++connAttempt;   // 先に世代を進め、旧rosの遅延イベントを無効化する
+  if(ros){ try{ros.close();}catch(e){} }
+  connected=false; $('#conn').classList.remove('on');
+  setConnStatus('接続中…', 'warn');
   ros=new ROSLIB.Ros({url:$('#url').value.trim()});
-  ros.on('connection',()=>{ connected=true; $('#conn').classList.add('on'); $('#btnConn').textContent='切断';
+  ros.on('connection',()=>{
+    if(myAttempt!==connAttempt) return;
+    connected=true; hadConnection=true; lastTelem=performance.now();   // 接続直後は応答途絶判定に猶予を与える
+    $('#conn').classList.add('on'); setConnStatus('接続済み', 'ok');
     cmdVel=new ROSLIB.Topic({ros,name:CFG.cmdVelTopic,messageType:CFG.messageTwist});
     cmdStr=new ROSLIB.Topic({ros,name:CFG.commandTopic,messageType:CFG.messageString});
     telem =new ROSLIB.Topic({ros,name:CFG.telemTopic,messageType:CFG.messageString});
@@ -1016,14 +1053,26 @@ function connect(){
       updateNavModeUI(); drawField();
     });
   });
-  ros.on('error',()=>{});
-  ros.on('close',()=>{ connected=false; $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; });
+  ros.on('error',()=>{});   // errorの直後にcloseも来る。再接続とメッセージはcloseハンドラで扱う
+  ros.on('close',()=>{
+    if(myAttempt!==connAttempt) return;
+    connected=false; $('#conn').classList.remove('on');
+    if(wantConnected) scheduleReconnect();
+    else setConnStatus('未接続', '');
+  });
 }
-function disconnect(){ if(ros){try{ros.close();}catch(e){}} ros=null; connected=false;
-  $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; }
+function disconnect(){
+  wantConnected=false; hadConnection=false;
+  if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null; }
+  ++connAttempt;
+  if(ros){ try{ros.close();}catch(e){} }
+  ros=null; connected=false;
+  $('#conn').classList.remove('on'); updateConnBtn(); setConnStatus('未接続', '');
+}
 $('#btnConn').onclick=()=>{
-  if(connected){ disconnect(); return; }
+  if(wantConnected){ disconnect(); return; }
   $('#demo').checked=false;   // 接続を押したら実機操作の意思とみなし、デモは自動でOFFにする
+  wantConnected=true; updateConnBtn();
   connect();
 };
 
@@ -1053,6 +1102,15 @@ setInterval(()=>{
 }, 1000/CFG.rateHz);
 
 setInterval(()=>{ $('#rate').textContent=pubCount+' Hz'; pubCount=0; }, 1000);
+
+// A2: 実機接続中にテレメトリが CFG.telemStaleMs 途絶えたら警告＋フィールドマップを減光
+setInterval(()=>{
+  const age = performance.now() - lastTelem;
+  const stale = connected && !demo() && age > CFG.telemStaleMs;
+  $('#staleHint').style.display = stale ? 'block' : 'none';
+  $('#fieldWrap').classList.toggle('stale', stale);
+  if(stale) $('#staleSec').textContent = (age/1000).toFixed(1) + 's';
+}, 300);
 
 // ===== テレメトリ描画 =====
 function applyTelem(t){
