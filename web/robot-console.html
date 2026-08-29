@@ -48,27 +48,46 @@
   .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
   .switch input:checked::after{transform:translateX(16px)}
 
-  /* layout: iPhone横画面(landscape)を主対象に2カラムを基本とする。外部コントローラ専用でタッチ操作UIは持たない */
+  /* layout: iPhone横画面(landscape、縦2:横5程度の縦に短いケース)を主対象に2カラムを基本とする。
+     外部コントローラ専用でタッチ操作UIは持たない */
   .layout{display:flex;flex-direction:column;gap:10px}
   .top,.bottom{display:flex;flex-direction:column;gap:10px}
   @media (orientation:landscape){
-    body{max-width:1280px}
-    .layout{display:grid;grid-template-columns:0.8fr 1.6fr;align-items:start}
+    body{max-width:1400px}
+    .layout{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+    /* 縦方向の余裕が少ないので、.top内をさらに2列(テレメトリ/デバッグ列 と タスク管理列)に割って
+       縦の積み上げ量を減らす。ブランドロゴは装飾のみなので横画面では非表示にして高さを確保する。
+       align-items:stretchで.topを.bottom(フィールドマップ)と同じ高さまで伸ばし、
+       usageWrap(1fr行)は「位置」列・「タスク管理」列の下に両方の幅いっぱいで配置する */
+    .top{display:grid;grid-template-columns:1fr 1.2fr;grid-template-rows:auto auto auto 1fr;gap:4px 10px;min-height:0}
+    #tele{grid-column:1;grid-row:1}
+    #tele .stat{padding:4px 8px}
+    #tele .lbl{font-size:9px}
+    #tele #pose{font-size:12px!important}
+    #rateRow{grid-column:1;grid-row:2;margin:-6px 0}
+    #advPanel{grid-column:1;grid-row:3;align-self:start;padding:4px 10px}
+    #advPanel summary{font-size:11px}
+    #taskPanel{grid-column:2;grid-row:1/4}
+    #usageWrap{grid-column:1/3;grid-row:4;min-height:0;display:flex;align-items:center;justify-content:center;
+      padding:0;border:none;background:transparent;overflow:hidden}
+    #usageImg{width:auto;height:100%;max-height:100%;max-width:100%;object-fit:contain}
+    #brandWrap{display:none!important}   /* 103行目の基本スタイル(display:flex)がCSSの記述順で後勝ちするのを防ぐ */
+    #fieldCanvasBox{max-height:56vh}
   }
 
   /* telemetry strip */
-  #tele{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  #tele{display:grid;grid-template-columns:1fr;gap:8px}
   .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
   .stat .v{font-family:var(--mono);font-size:20px;line-height:1.1;margin-top:3px}
-  #link .v{transition:color .2s}
 
   /* フィールドマップ（常時表示。外部コントローラ専用のためタッチスティックは無し） */
   #fieldTop{justify-content:space-between;margin-bottom:8px}
   .teambtn{padding:5px 14px;font-size:12px;font-weight:700;border-radius:7px;opacity:.5}
   .teambtn.active{opacity:1;color:#fff}
-  /* aspect-ratioは基本比率。横長のiPhone横画面では高さがビューポートを超えないようmax-heightで頭打ちにする
-     （内部のcanvas描画側(fieldFit)が実ピクセル比に合わせてレターボックスするので、この頭打ちで歪みは出ない） */
-  #fieldCanvasBox{position:relative;width:100%;aspect-ratio:6/5;max-height:64vh;
+  /* aspect-ratioはfieldFit()が計算する実際のフィールド比(自陣半面: 奥行12m/幅5m=12/5)に合わせてあり、
+     これによりレターボックス(上下/左右の余白)が出ない。横長のiPhone横画面では高さがビューポートを
+     超えないようmax-heightで頭打ちにする */
+  #fieldCanvasBox{position:relative;width:100%;aspect-ratio:12/5;max-height:64vh;
     background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   #fieldCanvasBox canvas{width:100%;height:100%;display:block}
 
@@ -146,7 +165,6 @@
   <div class="top">
     <div id="tele">
       <div class="stat"><div class="lbl">位置 (x,y,θ)</div><div class="v mono" id="pose" style="font-size:14px">--</div></div>
-      <div class="stat" id="link"><div class="lbl">リンク鮮度</div><div class="v" id="age">--- ms</div></div>
     </div>
 
     <div id="taskPanel" class="panel">
@@ -162,7 +180,7 @@
       <div id="taskDots"></div>
     </div>
 
-    <div class="row" style="justify-content:flex-end">
+    <div class="row" id="rateRow" style="justify-content:flex-end">
       <span class="pill mono" id="rate">0 Hz</span>
     </div>
 
@@ -184,6 +202,10 @@
 
     <div id="brandWrap">
       <img src="./CITRobocon_image.jpg" alt="CIT Robocon" id="brandLogo">
+    </div>
+
+    <div class="panel" id="usageWrap">
+      <img src="./con_image.jpg" alt="con" id="usageImg">
     </div>
   </div>
 
@@ -211,10 +233,6 @@
       </div>
     </div>
   </div>
-</div>
-<div class="panel" id="usageWrap">
-  <div class="lbl" style="margin-bottom:8px"></div>
-  <img src="./con_image.jpg" alt="con" id="usageImg">
 </div>
 </div><!-- /#scrollarea -->
 
@@ -851,13 +869,6 @@ setInterval(()=>{
 }, 1000/CFG.rateHz);
 
 setInterval(()=>{ $('#rate').textContent=pubCount+' Hz'; pubCount=0; }, 1000);
-
-// ===== リンク鮮度（デッドマン可視化）=====
-setInterval(()=>{
-  const age = lastTelem? performance.now()-lastTelem : 99999;
-  const el=$('#age'); el.textContent = age>9999?'-- ms':Math.round(age)+' ms';
-  el.style.color = age<300?'var(--ok)':age<800?'var(--warn)':'var(--bad)';
-}, 100);
 
 // ===== テレメトリ描画 =====
 function applyTelem(t){
