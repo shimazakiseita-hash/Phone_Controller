@@ -141,17 +141,20 @@
        配置(ベル直設置/置き場/城門/関所)  = アームの位置調整の一種。アームの隣、足回り・アームと同格の大きさ。
        ベル直(射出のみ)                  = ここぞの場面で少数回。1マス分、端に独立配置。
      アームストップは誤タップ防止のためここには出さない（物理パッドのLBのみ）。 */
-  #page2{min-height:0;display:flex;flex-direction:column}
-  #cmdPanel{min-height:0;flex:1;display:flex;flex-direction:column;gap:14px}
-  .cmdSection{display:flex;flex-direction:column;min-height:0;gap:6px}
+  /* fill前提(flex:1 + 1fr行)はビューポートが短いと#page2が縮んで行が潰れ、min-height付きの
+     ボタンがはみ出して重なる(縦横どちらでも)。各セクション自然高さ + 行の最低高さ確保 +
+     収まらなければ#scrollareaでスクロール、に統一する。横並びは下の landscape で切り替え */
+  #page2{min-height:auto;display:flex;flex-direction:column}
+  #cmdPanel{display:flex;flex-direction:column;gap:14px}
+  .cmdSection{display:flex;flex-direction:column;gap:6px}
   .cmdSecLbl{margin-bottom:0}
-  .cmdGrid{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:8px;flex:1;min-height:0}
+  .cmdGrid{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(60px,auto);gap:8px}
   .cmdBtn{font-weight:800;border-radius:12px;border:none;text-align:center;line-height:1.3;font-size:16px;min-height:60px}
   .cmdBtn:active{filter:brightness(.85);transform:translateY(1px)}
   .cmdBtn.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
   .cmdIcon{display:block;font-size:1.2em;line-height:1;margin-bottom:2px}
   .armGrid .cmdBtn{font-size:18px;font-weight:900;min-height:76px}
-  .bellGrid{grid-template-columns:1fr;grid-template-rows:repeat(2,1fr)}
+  .bellGrid{grid-template-columns:1fr}
   .bellGrid .cmdBtn{font-size:16px;min-height:60px}
   @media (orientation:landscape){
     /* 縦2:横5程度の横向きスマホ画面にスクロール無しで収まるよう、4グループを横並びにする。
@@ -164,23 +167,14 @@
     #cmdSecArm{flex:1.7;min-width:0;padding:0 8px;border-left:1px solid var(--line)}
     #cmdSecDpad{flex:1.2;min-width:0;padding:0 8px}
     #cmdSecBell{flex:0.8;min-width:0;padding-left:8px;border-left:1px solid var(--line)}
-    .cmdGrid{gap:6px}
+    .cmdGrid{gap:6px;grid-auto-rows:minmax(44px,auto)}   /* 横画面は縦に短いので行を詰める */
     .cmdBtn{font-size:13px;min-height:0}
-    .armGrid .cmdBtn{font-size:14px}
+    .armGrid .cmdBtn{font-size:14px;min-height:0}
     .bellGrid .cmdBtn{font-size:12px}
     .dpadGrid .cmdIcon{font-size:1em}
   }
-  /* 縦画面(サブ用途)。②操縦ページのfill前提レイアウト(flex:1 + 1fr行)は、縦だと#page2に確定高さが
-     無く行が0に潰れ、ボタン(min-height)がセルからはみ出して重なる。自然高さ+スクロールに切り替える */
-  @media (orientation:portrait){
-    #page2{min-height:auto}
-    #cmdPanel{flex:none;min-height:auto}
-    .cmdSection{min-height:auto}
-    .cmdGrid{flex:none;grid-template-rows:none;grid-auto-rows:minmax(60px,auto)}
-  }
 
-  /* PIDゲイン調整パネル(開閉式)。普段は閉じておき、チューニング時だけ開く想定なので
-     flex:1のcmdPanelを圧迫しないようflex指定なし(summaryだけの高さで収まる) */
+  /* PIDゲイン調整パネル(開閉式)。普段は閉じておき、チューニング時だけ開く想定 */
   #gainPanel{flex:none;padding:8px 10px;margin-top:8px}
   #gainPanel summary{cursor:pointer;font-size:12px;color:var(--muted);list-style:none}
   #gainPanel summary::-webkit-details-marker{display:none}
