@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1316">
+<title>機体コンソール</title>
+<!-- roslib はローカル同梱（会場のPi-APはネット無しのためCDN不可）。同じフォルダに roslib.min.js を置く -->
+<script src="./roslib.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1316; --panel:#151d22; --panel2:#1b252b; --line:#26333a;
+    --txt:#e6eaec; --muted:#8a969c;
+    --ok:#3fb89a; --warn:#efa23a; --bad:#e2503f; --live:#efa23a;
+    --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* #page1/#page2それぞれがdisplay:grid等を明示指定しているため、hidden属性の既定display:noneが
+     打ち消されてしまう。!importantで確実にhidden側を勝たせる */
+  [hidden]{display:none!important}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);
+    overscroll-behavior:none;touch-action:manipulation;height:100%}
+  /* body = ヘッダー無し / スクロール領域 のflex。position:fixedは使わず、
+     flexの残り領域だけをスクロールさせる構成 */
+  body{max-width:760px;margin:0 auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px;
+    height:100vh;height:100dvh;overflow:hidden}
+  #scrollarea{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+    -webkit-overflow-scrolling:touch;padding-bottom:max(0px,env(safe-area-inset-bottom))}
+  .row{display:flex;gap:8px;align-items:center}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:var(--mono)}
+
+  /* 共通の接続ドット（接続バー／パッドバーで共用） */
+  .dot{width:14px;height:14px;border-radius:50%;background:var(--bad);flex:none;
+    box-shadow:0 0 0 3px rgba(226,80,63,.15);transition:background .15s,box-shadow .15s}
+  .on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,184,154,.18)}
+
+  /* connection bar */
+  #conn{justify-content:space-between;flex-wrap:wrap;gap:8px}
+  #conn input{flex:1;min-width:120px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--txt);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+  button{font-family:var(--sans);font-size:14px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--txt);border-radius:8px;padding:9px 12px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+  .switch{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);user-select:none}
+  .switch input{appearance:none;width:34px;height:18px;border-radius:9px;background:var(--line);position:relative;outline:none;cursor:pointer}
+  .switch input:checked{background:var(--warn)}
+  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s}
+  .switch input:checked::after{transform:translateX(16px)}
+
+  /* layout: iPhone横画面(landscape、縦2:横5程度の縦に短いケース)を主対象に2カラムを基本とする。
+     外部コントローラ専用でタッチ操作UIは持たない */
+  .layout{display:flex;flex-direction:column;gap:10px}
+  .top,.bottom{display:flex;flex-direction:column;gap:10px}
+  @media (orientation:landscape){
+    body{max-width:1400px}
+    .layout{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+    /* タスク管理はフィールドマップ(.bottom、レイアウト右半分)と横幅を揃えるため.top全幅の専用行にする。
+       ブランドロゴは装飾のみなので横画面では非表示にして高さを確保する。
+       align-items:stretchで.topを.bottom(フィールドマップ)と同じ高さまで伸ばし、
+       usageWrap(1fr行)は最後に全幅で配置する */
+    .top{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:4px 10px;min-height:0}
+    #taskPanel{grid-column:1/3;grid-row:1}
+    #rateRow{grid-column:1/3;grid-row:2;justify-content:flex-end;margin:-6px 0}
+    #usageWrap{grid-column:1/3;grid-row:3;min-height:0;display:flex;align-items:center;justify-content:center;
+      padding:0;border:none;background:transparent;overflow:hidden}
+    #usageImg{width:auto;height:100%;max-height:100%;max-width:100%;object-fit:contain}
+    #brandWrap{display:none!important}   /* 下の#brandWrap基本スタイル(display:flex)がCSSの記述順で後勝ちするのを防ぐ */
+    #fieldCanvasBox{max-height:56vh}
+  }
+
+  /* フィールドマップ（常時表示。外部コントローラ専用のためタッチスティックは無し） */
+  #fieldTop{justify-content:space-between;margin-bottom:8px}
+  .teambtn{padding:5px 14px;font-size:12px;font-weight:700;border-radius:7px;opacity:.5}
+  .teambtn.active{opacity:1;color:#fff}
+  /* aspect-ratioはfieldFit()が計算する実際のフィールド比(自陣半面: 奥行12m/幅5m=12/5)に合わせてあり、
+     これによりレターボックス(上下/左右の余白)が出ない。横長のiPhone横画面では高さがビューポートを
+     超えないようmax-heightで頭打ちにする */
+  #fieldCanvasBox{position:relative;width:100%;aspect-ratio:12/5;max-height:64vh;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #fieldCanvasBox canvas{width:100%;height:100%;display:block}
+
+  /* ブランドロゴ（余ったスペースを埋める。画像は正方形JPGで円が縁いっぱいに内接しているので、
+     clip-pathで四隅の白背景だけを落として円バッジとして見せる） */
+  #brandWrap{flex:1 1 auto;min-height:60px;display:flex;align-items:center;justify-content:center;padding:6px 0}
+  #brandLogo{width:min(34%,120px);aspect-ratio:1/1;object-fit:cover;border-radius:50%;
+    clip-path:circle(49.5%);filter:drop-shadow(0 0 22px rgba(74,144,217,.35)) drop-shadow(0 0 2px rgba(0,0,0,.4));
+    opacity:.94}
+  #usageImg{width:45%;display:block;margin:0 auto;border-radius:8px}
+
+  .hint{font-size:11px;color:var(--muted);text-align:center}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* タスク管理（半自動シーケンス用UI骨組み。実行の中身＝シーケンス連携は後日実装） */
+  #taskCarousel{justify-content:space-between;align-items:stretch;gap:8px;margin:2px 0 4px}
+  .taskSide{flex:0 0 22%;text-align:center;padding:10px 4px;border-radius:12px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-size:11px;
+    opacity:.55;transform:scale(.94);transition:opacity .18s,transform .18s}
+  .taskSide:active:not(:disabled){transform:scale(.9)}
+  .taskSide .arrow{font-size:17px;display:block;margin-bottom:3px;color:var(--warn)}
+  .taskSide:disabled{opacity:.12}
+  #taskCurrent{flex:1 1 auto;text-align:center;padding:18px 10px;border-radius:16px;position:relative;
+    background:linear-gradient(180deg,rgba(239,162,58,.16),rgba(239,162,58,.02) 70%),var(--panel2);
+    border:1px solid rgba(239,162,58,.55);
+    box-shadow:0 10px 26px -12px rgba(239,162,58,.45),inset 0 0 0 1px rgba(239,162,58,.06)}
+  #taskCurrent.pulse{animation:taskPulse .32s ease}
+  @keyframes taskPulse{0%{transform:scale(.95);opacity:.7}100%{transform:scale(1);opacity:1}}
+  #taskNum{display:inline-block;font-size:10px;font-weight:700;color:var(--warn);letter-spacing:.14em;
+    background:rgba(239,162,58,.14);border:1px solid rgba(239,162,58,.4);border-radius:999px;padding:3px 11px}
+  #taskLabel{font-size:23px;font-weight:800;margin-top:9px;letter-spacing:.01em}
+  #taskDots{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+  .taskDot{width:7px;height:7px;padding:0;border:none;border-radius:50%;background:var(--line);
+    cursor:pointer;transition:transform .15s,background .15s}
+  .taskDot.active{background:var(--warn);transform:scale(1.5)}
+
+  /* 操作バー: #scrollareaの外（bodyのflex子として常時表示、position:fixedは使わない）。
+     端末を横持ちした際に左右の端に近い位置で親指が届くよう、実行=左寄り小さめ／次へ=右寄り大きめに分ける */
+  #taskActionBar{flex:0 0 auto;display:grid;grid-template-columns:1fr 1.5fr;gap:10px;
+    padding-bottom:max(0px,env(safe-area-inset-bottom))}
+  #taskExec{padding:12px 10px;font-size:14px;font-weight:800;letter-spacing:.02em;border:none;border-radius:12px;
+    background:linear-gradient(180deg,#4bcaa8,var(--ok));color:#04211b;
+    box-shadow:0 8px 18px -8px rgba(63,184,154,.6)}
+  #taskExec:active{box-shadow:0 3px 10px -6px rgba(63,184,154,.55);transform:translateY(1px)}
+  #taskAdvance{padding:12px 10px;font-size:15px;font-weight:800;border-radius:12px;
+    background:linear-gradient(180deg,#ffc267,var(--warn));color:#3a2400;border:none;
+    box-shadow:0 8px 20px -8px rgba(239,162,58,.65)}
+  #taskAdvance:active{box-shadow:0 3px 10px -6px rgba(239,162,58,.6);transform:translateY(1px)}
+  #taskAdvance:disabled{opacity:.3;cursor:default;box-shadow:none}
+
+  /* ページ切り替えタブ（① タスク／② 操縦）。物理コントローラが無くても②だけで一通り操縦できるようにする */
+  #pageSwitch{gap:8px}
+  .pagetab{flex:1;padding:10px;font-size:13px;font-weight:700;border-radius:10px;opacity:.55}
+  .pagetab.active{opacity:1;color:#fff;background:var(--warn);border-color:var(--warn)}
+
+  /* ②操縦ページ: 機構コマンドボタン。スティックは物理パッド専用のためここには置かない。
+     ボタンは意味のまとまり・使用頻度で4グループに分け、常に同じ場所・同じ大きさで固定表示する
+     （手が場所を覚えられるように）。足回り/アーム/配置はいずれも2x2グリッドで統一し、大きさを揃える:
+       足回り(速度低/高・逆転・位置調整) = 走行系。2x2で他グループと同じ大きさ。
+       アーム(リセット/回収/降下/放す)    = 毎回連続で多用。一番大きく最優先の位置。
+       配置(ベル直設置/置き場/城門/関所)  = アームの位置調整の一種。アームの隣、足回り・アームと同格の大きさ。
+       ベル直(射出のみ)                  = ここぞの場面で少数回。1マス分、端に独立配置。
+     アームストップは誤タップ防止のためここには出さない（物理パッドのLBのみ）。 */
+  #page2{min-height:0;display:flex;flex-direction:column}
+  #cmdPanel{min-height:0;flex:1;display:flex;flex-direction:column;gap:14px}
+  .cmdSection{display:flex;flex-direction:column;min-height:0;gap:6px}
+  .cmdSecLbl{margin-bottom:0}
+  .cmdGrid{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:8px;flex:1;min-height:0}
+  .cmdBtn{font-weight:800;border-radius:12px;border:none;text-align:center;line-height:1.3;font-size:16px;min-height:60px}
+  .cmdBtn:active{filter:brightness(.85);transform:translateY(1px)}
+  .cmdBtn.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
+  .cmdIcon{display:block;font-size:1.2em;line-height:1;margin-bottom:2px}
+  .armGrid .cmdBtn{font-size:18px;font-weight:900;min-height:76px}
+  .bellGrid{grid-template-columns:1fr;grid-template-rows:repeat(2,1fr)}
+  .bellGrid .cmdBtn{font-size:16px;min-height:60px}
+  @media (orientation:landscape){
+    /* 縦2:横5程度の横向きスマホ画面にスクロール無しで収まるよう、4グループを横並びにする。
+       親指の届く大きめタップ領域を優先しつつ、アームは横幅を広めに取って最優先扱い。
+       配置(dpad)はアームの位置調整の一種なので区切り線を挟まずアームの隣に置く */
+    #cmdPanel{flex-direction:row;padding:6px 8px;gap:0}
+    .cmdSection{gap:4px}
+    .cmdSecLbl{margin-bottom:2px!important;font-size:10px}
+    #cmdSecDrive{flex:1.2;min-width:0;padding-right:8px}
+    #cmdSecArm{flex:1.7;min-width:0;padding:0 8px;border-left:1px solid var(--line)}
+    #cmdSecDpad{flex:1.2;min-width:0;padding:0 8px}
+    #cmdSecBell{flex:0.8;min-width:0;padding-left:8px;border-left:1px solid var(--line)}
+    .cmdGrid{gap:6px}
+    .cmdBtn{font-size:13px;min-height:0}
+    .armGrid .cmdBtn{font-size:14px}
+    .bellGrid .cmdBtn{font-size:12px}
+    .dpadGrid .cmdIcon{font-size:1em}
+  }
+
+  /* PIDゲイン調整パネル(開閉式)。普段は閉じておき、チューニング時だけ開く想定なので
+     flex:1のcmdPanelを圧迫しないようflex指定なし(summaryだけの高さで収まる) */
+  #gainPanel{flex:none;padding:8px 10px;margin-top:8px}
+  #gainPanel summary{cursor:pointer;font-size:12px;color:var(--muted);list-style:none}
+  #gainPanel summary::-webkit-details-marker{display:none}
+  #gainPanel summary::before{content:"▸ ";color:var(--muted)}
+  #gainPanel[open] summary::before{content:"▾ "}
+  .gainBody{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+  .gainRow{display:flex;align-items:center;gap:8px}
+  .gainRow .gainLbl{flex:0 0 34px;font-size:12px;color:var(--muted)}
+  .gainRow input[type=range]{flex:1;accent-color:var(--warn)}
+  .gainRow .gainVal{flex:0 0 44px;text-align:right;font-family:var(--mono);font-size:12px}
+  #gainSignToggle{align-self:flex-start}
+</style>
+</head>
+<body>
+
+<div id="scrollarea">
+
+<div id="conn" class="panel row">
+  <span class="dot"></span>
+  <input id="url" value="ws://10.56.19.144:9090" inputmode="url" spellcheck="false">
+  <!-- <input id="url" value="ws://10.152.79.144:9090" inputmode="url" spellcheck="false"> -->
+  <button id="btnConn">接続</button>
+  <label class="switch"><input type="checkbox" id="demo" checked>デモ</label>
+</div>
+
+<div class="row" id="pageSwitch">
+  <button id="pageTab1" class="pagetab active">① タスク</button>
+  <button id="pageTab2" class="pagetab">② 操縦</button>
+</div>
+
+<div class="layout" id="page1">
+  <div class="top">
+    <div id="taskPanel" class="panel">
+      <div class="lbl" style="margin-bottom:6px">タスク管理</div>
+      <div class="row" id="taskCarousel">
+        <button id="taskPrev" class="taskSide"><span class="arrow">◀</span><span class="taskLbl"></span></button>
+        <div id="taskCurrent">
+          <span id="taskNum"></span>
+          <div id="taskLabel"></div>
+        </div>
+        <button id="taskNext" class="taskSide"><span class="arrow">▶</span><span class="taskLbl"></span></button>
+      </div>
+      <div id="taskDots"></div>
+    </div>
+
+    <div class="row" id="rateRow" style="justify-content:flex-end">
+      <span class="pill mono" id="rate">0 Hz</span>
+    </div>
+
+    <div id="brandWrap">
+      <img src="./CITRobocon_image.jpg" alt="CIT Robocon" id="brandLogo">
+    </div>
+
+    <div class="panel" id="usageWrap">
+      <img src="./con_image.jpg" alt="con" id="usageImg">
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div id="fieldWrap" class="panel">
+      <div class="row" id="fieldTop">
+        <div class="lbl">フィールドマップ</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <button id="teamRed" class="teambtn">RED</button>
+          <button id="teamBlue" class="teambtn">BLUE</button>
+          <label class="switch" style="margin-left:4px"><input type="checkbox" id="trailToggle" checked>軌跡</label>
+        </div>
+      </div>
+      <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
+      <div class="row" id="navRow" style="justify-content:space-between;margin:6px 0 0">
+        <span class="pill mono" id="navMode">モード: 手動</span>
+        <div class="row" style="gap:6px">
+          <button id="resetPose">初期位置</button>
+          <button id="goalCancel">移動キャンセル</button>
+        </div>
+      </div>
+      <div class="hint" id="tapHint" style="text-align:left;margin-top:4px">タップで目標地点へ移動指示（/robot/goal）</div>
+      <div class="hint" id="qualityHint" style="display:none;text-align:left;margin-top:4px">
+        自己位置の信頼度低下: <span id="qualityVal" class="mono">--</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layout" id="page2" hidden>
+  <div class="panel" id="cmdPanel">
+    <div class="cmdSection" id="cmdSecDrive">
+      <div class="lbl cmdSecLbl">足回り</div>
+      <div class="cmdGrid driveGrid" id="cmdGridDrive"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecArm">
+      <div class="lbl cmdSecLbl">アーム</div>
+      <div class="cmdGrid armGrid" id="cmdGridArm"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecDpad">
+      <div class="lbl cmdSecLbl">配置</div>
+      <div class="cmdGrid dpadGrid" id="cmdGridDpad"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecBell">
+      <div class="lbl cmdSecLbl">ベル直</div>
+      <div class="cmdGrid bellGrid" id="cmdGridBell"></div>
+    </div>
+  </div>
+  <details class="panel" id="gainPanel">
+    <summary>直進補正PIDゲイン調整</summary>
+    <div class="gainBody" id="gainBody"></div>
+  </details>
+</div>
+</div><!-- /#scrollarea -->
+
+<div id="taskActionBar">
+  <button id="taskExec">✓ 実行</button>
+  <button id="taskAdvance">次へ →</button>
+</div>
+
+<script>
+// ===== 設定（機種・機体に合わせてここを編集） =====
+const CFG = {
+  cmdVelTopic:  '/cmd_vel',                 messageTwist: 'geometry_msgs/msg/Twist',
+  commandTopic: '/robot/command',           messageString:'std_msgs/msg/String',
+  telemTopic:   '/robot/telemetry',         // std_msgs/String の中身は JSON
+  goalTopic:       '/robot/goal',           messagePoseStamped: 'geometry_msgs/msg/PoseStamped',
+  goalCancelTopic: '/robot/goal_cancel',    messageBool: 'std_msgs/msg/Bool',
+  resetPoseTopic:  '/robot/reset_pose',     messageEmpty: 'std_msgs/msg/Empty',
+  navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
+  pidGainTopic:    '/robot/pid_gain',       messageFloat32MultiArray: 'std_msgs/msg/Float32MultiArray',
+  rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
+  maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
+  // 全機構コマンド（実Xbox系パッドのボタン配置A B X Y LB RB LTに1:1で対応させ、can_node.cpp
+  // （torobo2026_ros2_rp、変更対象外）が解釈する定型アーム動作と一致させる）。
+  // 旧id/ラベルはcan_ps4_node.cpp(実PS4パッド直挿し時のバックアップ経路用)のボタン配置に引きずられて
+  // 実態と乖離していたため、基本経路のcan_node.cpp側のコメント通りに全面的に修正した(2026/8時点)。
+  // 十字キー4方向(dpad_*)もcan_node.cppのcross_data判定に対応済みのため、機構コマンドとして併記する。
+  //
+  // group: ②操縦ページでのボタンの意味のまとまり。使用頻度に応じて見た目のサイズ・強調度を変える。
+  //   drive = 足回り関連（速度2段階/逆転/Lidar位置補正ホールド）。
+  //   arm   = 毎回連続で多用するアーム基本動作（降下/回収/リセット/放す）。一番大きく、常に同じ位置。
+  //   bell  = ここぞという場面で少数回のベル直操作（射出・位置調整）。中サイズ、目立つ色。
+  //   dpad  = 特定の場面のみ使う配置プリセット（ベル直設置/置き場/城門/関所）。小さめ、矢印アイコン付き。
+  // screen: false のものは誤タップ防止のため②操縦ページには表示しない
+  //   （物理パッドのボタンからは引き続き使える。pollGamepad()はCFG.commands全体を見るため影響なし）。
+  //   - arm_force_stop(LB): 緊急時のみ・押し間違えたくないとのことなので非表示
+  // hold: true のもの（Lidar位置補正）は押している間だけ有効(ホールド)。現状Lidarの精度が低いため
+  //   常時自動発火ではなくボタンでゲートする仕様（can_node.cppのlider_callback()参照）。
+  //   押している間、BUTTON_PULSE_S(0.15s)より短い間隔でsendCommand()を連打してパルスを継続更新する。
+  // 備考: 「Lidar位置補正」（回収時に足回りを微調整するもの、/circle_centerトリガー）と、
+  // manual_adjust(RB、ベル直位置調整)は別物。以前混同していたが、manual_adjustは実際にベル直側の機能。
+  commands: [
+    {id:'descend_adjust',  label:'降下',     color:'#4d459b', colorFg:'#f2f0fa', group:'arm'},  // LT: 降下微調整
+    {id:'intake',          label:'回収',     color:'#4a90d9', colorFg:'#052033', group:'arm'},  // B
+    {id:'arm_start',       label:'リセット', color:'#7c8d96', colorFg:'#10181c', group:'arm'},  // X: 初期
+    {id:'release_suction', label:'放す',     color:'#d9714a', colorFg:'#2a0f04', group:'arm'},  // A: 吸引切る(設置)
+    {id:'launch',          label:'射出',     color:'#efa23a', colorFg:'#3a2400', group:'bell'}, // Y
+    {id:'manual_adjust',   label:'位置調整', color:'#8a969c', colorFg:'#101a1f', group:'bell'}, // RB: 手動位置調整(ベル直位置調整)
+    {id:'lidar_correct',   label:'Lidar補正', color:'#4a90d9', colorFg:'#052033', group:'drive', hold:true}, // RT: ホールド中のみ有効
+    {id:'arm_force_stop',  label:'アームストップ', color:'#c76b98', colorFg:'#2a0f1c', screen:false}, // LB
+    {id:'dpad_up',    label:'ベル直設置', icon:'▲', color:'#3fb89a', colorFg:'#04211b', group:'dpad'},
+    {id:'dpad_right', label:'置き場',     icon:'▶', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 2個めボール置き場
+    {id:'dpad_left',  label:'城門',       icon:'◀', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 城門設置高さ
+    {id:'dpad_down',  label:'関所',       icon:'▼', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 関所設置高さ
+  ],
+  // ---- Bluetoothゲームパッド関連（X5 Lite, Switchモードで採取・確定済み）----
+  //   axes: [0]左スティックx [1]左スティックy [2]右スティックx [3]右スティックy
+  //         （y軸はGamepad API標準どおり上=負値なので、上=前進/上=正回転にしたい軸はinvert:trueで反転）
+  //   buttons: [0]A [1]B [2]X [3]Y [4]LB [5]RB [6]LT [7]RT [8]ビュー [9]メニュー
+  //            [10]左スティック押込 [11]右スティック押込 [12]上 [13]下 [14]左 [15]右 [16]ホーム
+  gamepad: {
+    deadzone: 0.08,                         // 起動時デフォルト（詳細設定パネルのスライダーで一時的に変更可）
+    // axes: どのGamepad API axesを前後/左右/旋回に割り当てるか。invertで符号反転。
+    axes: {
+      forward: {index: 1, invert: true},    // drive.x（前後）＝左スティックy
+      strafe:  {index: 0, invert: true},    // drive.y（左右）＝左スティックx
+      rotate:  {index: 2, invert: true},    // drive.wz（旋回）＝右スティックx
+    },
+    // buttons: CFG.commands の id → ボタン番号（エッジ）。画面ボタンと両方から操作できる。
+    // インデックス自体はX5 Lite実機で採取・確定済みの値なので、idの対応先(can_node.cpp側の実際の
+    // 動作)が変わってもここは変更しない。id名だけ実態に合わせて更新した。
+    buttons: {
+      arm_start:2, intake:1, launch:3, release_suction:0,
+      arm_force_stop:4, manual_adjust:5, descend_adjust:6, lidar_correct:7,
+    },
+    // 追加: 十字キー（Gamepad API標準マッピングの buttons[12..15]）
+    dpad: {
+      dpad_up:12, dpad_down:13, dpad_left:14, dpad_right:15,
+    },
+  },
+  // telemetry JSON 例:
+  // {"pose":{"x":1.2,"y":0.4,"theta":1.57},"quality":0.92}
+  // pose(x,y=m, theta=rad)・quality(0〜1、位置推定の健全性)は任意項目（無くても他の表示に影響しない）
+  // ※vbat/state/wheelsは実測データの裏付けが無いため本UIでは表示しない（実装するときはここに追加する）
+
+  // ---- フィールドマップ（とうロボ2026 実フィールド。原点=フィールド左下、単位m、x=右、y=上）----
+  field: {
+    size: {x: 10.0, y: 12.0},
+    centerDivider: {x: 5.0},                              // 縦の仕切り線（全高）
+    zones: [                                              // 横帯ゾーン（境界線＋ラベル）
+      {label:'エリア1', y0:0,     y1:4.375},
+      {label:'エリア2', y0:4.375, y1:8.875},
+      {label:'エリア3', y0:8.875, y1:12.0},
+    ],
+    startZones: {
+      red:  {x0:0.05, y0:0.05, x1:0.85, y1:0.85},
+      blue: {x0:9.15, y0:0.05, x1:9.95, y1:0.85},
+    },
+    // 城門: 底面500mm×795mm(フィールドオブジェクトについて_v1.0より、トラス部分は床面積に含めない)
+    castleGate: {cx:5.0, cy:2.6, w:0.5, h:0.795, label:'城門'},
+    // 関所: 中深皿9号、外径122mm(半径0.061m)を床にビス3箇所で固定
+    checkpoints: {
+      red:  [{x:4.45,y:0.75,r:0.061}, {x:4.45,y:3.625,r:0.061}],
+      blue: [{x:5.45,y:0.75,r:0.061}, {x:5.45,y:3.625,r:0.061}],
+    },
+    // 石垣: 600mm×600mm(フィールドオブジェクトについて_v1.0より)
+    castleBase: [
+      // エリア3(y:8.875〜12.0)の中央、各自陣半面(x:0〜5 / x:5〜10)の中央に配置
+      {cx:2.5, cy:10.4375, size:0.6, label:'石垣'},
+      {cx:7.5, cy:10.4375, size:0.6, label:'石垣'},
+    ],
+    // ボール置き場: 3Dプリンタ製の円柱(養生テープ挿入)。PDFに直径の明記が無いため半径0.05mは仮値、要確認。
+    // 座標はRED基準の自陣外側エッジからの距離(m)。描画時にteamX()でBLUE側もミラー
+    ballSpots: [
+      {x:0.15,   y:3.875, r:0.05, label:'回収1'},
+      {x:0.15,   y:5.175, r:0.05, label:'回収2'},
+      {x:0.15,   y:6.725, r:0.05, label:'回収3'},
+      {x:4.175,  y:8.875, r:0.05, label:'回収4'},
+      {x:0.75,   y:8.875, r:0.05, label:'回収5'},
+    ],
+    // ---- エリア2内のフェンスと通過可能な隙間(RED基準、y=境界、x=隙間中心)。BLUEはx反転でミラー ----
+    // strip: 0=エリア1 [0,4.375) / 1=エリア2下 [4.375,5.875) / 2=エリア2中 [5.875,7.375) /
+    //        3=エリア2上 [7.375,8.875] / 4=エリア3(通行不可、到達目標にも無い)
+    // gaps[i] は strip i と strip i+1 の間の隙間。null は完全に塞がっていて通過不可。
+    stripBoundaries: [4.375, 5.875, 7.375, 8.875],
+    stripGaps: [
+      {y:4.375, x:3.9625},  // エリア1/2境界: 中央寄りが隙間
+      {y:5.875, x:0.9625},  // エリア2下段/中段: 外側寄りが隙間
+      {y:7.375, x:3.9625},  // エリア2中段/上段: 中央寄りが隙間
+      null,                  // エリア2/3境界: 完全に塞がっている
+    ],
+    // 描画用: 各フェンスの「自陣外側エッジからの距離(m)」での塞がってる区間[d0,d1]。隙間はこの範囲外。
+    // null(エリア2/3境界)は全幅(0〜4.925)が塞がってる
+    fenceBlockedRanges: [ [0,3.0], [1.925,4.925], [0,3.0], [0,4.925] ],
+  },
+  // ---- チーム別の pose→フィールド座標変換。推定側の座標規約に合わせてox/oy/sx/sy/thetaを調整 ----
+  teams: {
+    red:  {color:'#e2503f', ourHalf:'left',
+           poseToField:{ox:0.45, oy:0.45, sx:+1, sy:+1, thetaOffset:0, thetaSign:+1}},
+    blue: {color:'#4a90d9', ourHalf:'right',
+           poseToField:{ox:9.55, oy:0.45, sx:-1, sy:+1, thetaOffset:0, thetaSign:-1}},
+  },
+  team: 'red',                                            // 現在の自チーム（マップ上部のトグルで変更）
+  map: {trailMax:60, qualityWarn:0.5},                     // 軌跡の保持点数／品質低下とみなす閾値
+};
+
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+let ros=null, connected=false;
+let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
+let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null, gainPub=null;
+let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
+let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
+const demo=()=>$('#demo').checked;
+
+// ===== タスク管理 =====
+// target: RED基準のフィールド座標(m)・角度(rad, y軸正方向=奥/城側を0、反時計回りが正)。
+// フィールド寸法図・各種ボールスポット配置図(2026/4/1版)から実測。BLUE側はx反転で自動ミラー。
+// 機構コマンド(旧sequence_data方式)との連携は今回は対象外、実行ボタンは目標地点への自動移動のみ行う。
+const TASKS = [
+  {label:'ボール回収', target:{x:0.15,   y:3.875, theta:0}},
+  {label:'関所1',      target:{x:4.45,   y:3.625, theta:-Math.PI/2}},
+  {label:'ボール回収', target:{x:0.15,   y:5.175, theta:Math.PI/2}},
+  {label:'ボール回収', target:{x:0.15,   y:6.725, theta:Math.PI/2}},
+  {label:'射出',       target:{x:2.4625, y:8.275, theta:0}},
+  {label:'ボール回収', target:{x:4.175,  y:8.875, theta:0}},
+  {label:'ボール回収', target:{x:0.75,   y:8.875, theta:0}},
+  {label:'関所2',      target:{x:4.45,   y:0.75,  theta:-Math.PI/2}},
+  {label:'城門',       target:{x:5.0,    y:2.2875,theta:-Math.PI/2}},
+];
+let taskIndex = 0;
+const taskDotsBox=$('#taskDots');
+TASKS.forEach((t,i)=>{
+  const d=document.createElement('button'); d.type='button'; d.className='taskDot';
+  d.title=`${i+1}. ${t.label}`;
+  d.onclick=()=>goTask(i);
+  taskDotsBox.appendChild(d);
+});
+function renderTask(){
+  const n=TASKS.length;
+  $('#taskNum').textContent = `TASK ${taskIndex+1} / ${n}`;
+  $('#taskLabel').textContent = TASKS[taskIndex].label;
+  const prev=$('#taskPrev'), next=$('#taskNext');
+  prev.disabled = taskIndex<=0;
+  prev.querySelector('.taskLbl').textContent = taskIndex>0 ? TASKS[taskIndex-1].label : '';
+  next.disabled = taskIndex>=n-1;
+  next.querySelector('.taskLbl').textContent = taskIndex<n-1 ? TASKS[taskIndex+1].label : '';
+  $('#taskAdvance').disabled = taskIndex>=n-1;
+  $$('#taskDots .taskDot').forEach((d,i)=>d.classList.toggle('active', i===taskIndex));
+  const cur=$('#taskCurrent');
+  cur.classList.remove('pulse'); void cur.offsetWidth; cur.classList.add('pulse');
+}
+function goTask(i){ taskIndex=Math.max(0,Math.min(TASKS.length-1,i)); renderTask(); }
+
+// ---- エリア2のフェンスを避けるための経路生成(RED基準で計算してから最後にチーム変換) ----
+function stripIndexOf(y){
+  const b=CFG.field.stripBoundaries;
+  if(y<b[0]) return 0;
+  if(y<b[1]) return 1;
+  if(y<b[2]) return 2;
+  if(y<=b[3]) return 3;   // ちょうど境界上のタスク(回収4/5等)はエリア2上段側として扱う
+  return 4;               // エリア3(通行不可、目標にも無い想定)
+}
+// curFieldY: 現在位置のフィールドy(RED/BLUE共通、yは反転しないのでそのまま使える)
+// target: RED基準の{x,y,theta}。戻り値はRED基準の経由地配列(最後の要素が本来の目標)
+// フェンスの手前/奥でx位置を合わせてから直進で通過するための余裕(m)。ロボット800×800mm(半分0.4m)に対し
+// 十分な余白を確保した上で、斜めに接近してフェンスの角に接触しないようにする
+const FENCE_CROSS_MARGIN = 0.5;
+function buildRedFramePath(curFieldY, target){
+  const from=stripIndexOf(curFieldY), to=stripIndexOf(target.y);
+  const path=[];
+  const dir = to>from ? 1 : -1;
+  let s=from;
+  while(s!==to){
+    const gapIdx = dir>0 ? s : s-1;
+    const gap = CFG.field.stripGaps[gapIdx];
+    if(!gap){ console.warn('経路上に完全に塞がったフェンスがあり自動生成できません(gap#'+gapIdx+')'); break; }
+    // 手前(現在のstrip側)でx位置を合わせてから、奥(次のstrip側)まで直進で通過する2点1組
+    path.push({x:gap.x, y:gap.y - dir*FENCE_CROSS_MARGIN, theta:target.theta});
+    path.push({x:gap.x, y:gap.y + dir*FENCE_CROSS_MARGIN, theta:target.theta});
+    s+=dir;
+  }
+  path.push({x:target.x, y:target.y, theta:target.theta});
+  return path;
+}
+// RED基準の経由地1件を、現在のCFG.teamのフィールド座標に変換(xの反転・角度の反転)
+function toTeamField(wp){
+  const fx = CFG.team==='blue' ? (CFG.field.size.x - wp.x) : wp.x;
+  const fieldTheta = CFG.team==='blue' ? -wp.theta : wp.theta;
+  return {x:fx, y:wp.y, theta:fieldTheta};
+}
+let taskChainQueue = [];  // 実行ボタンで生成した残りの経由地(先頭がnavState=manual到達時に次に送るもの)
+$('#taskPrev').onclick=()=>goTask(taskIndex-1);
+$('#taskNext').onclick=()=>goTask(taskIndex+1);
+$('#taskAdvance').onclick=()=>goTask(taskIndex+1);
+$('#taskExec').onclick=()=>{
+  // TASKS[].target(RED基準)から、現在位置をもとにフェンスの隙間を経由する経路を作り、
+  // 先頭の経由地だけ送信。残りはtaskChainQueueに積んで、到達のたびに自動で次を送る。
+  // 中継地点は「中心がそこを通れば安全」という計算値なのでオフセット無し、最終目標だけ
+  // 前面→中心オフセットをかける(中継地点にかけるとフェンス通過マージンが削られてしまうため)。
+  const t = TASKS[taskIndex].target;
+  const curFieldY = lastPose ? poseToFieldXY(lastPose, CFG.team).y : t.y;
+  const redPath = buildRedFramePath(curFieldY, t);
+  const teamPath = redPath.map(toTeamField);
+  const lastIdx = teamPath.length-1;
+  const fc = frontToCenterField(teamPath[lastIdx].x, teamPath[lastIdx].y, teamPath[lastIdx].theta);
+  teamPath[lastIdx] = {x:fc.x, y:fc.y, theta:teamPath[lastIdx].theta};
+  taskChainQueue = teamPath.slice(1);
+  const first = teamPath[0];
+  sendGoal(first.x, first.y, first.theta);
+};
+renderTask();
+
+// ===== Gamepad（Bluetooth接続の物理コントローラ。②操縦ページのタッチ操作と併用可）=====
+let gpadActive=false;
+let deadzone=CFG.gamepad.deadzone;
+const AX=CFG.gamepad.axes, BTN=CFG.gamepad.buttons, DPAD=CFG.gamepad.dpad;  // DPADを追加
+const btnHeld={};
+const dpadHeld={};  // 追加
+
+function dz(v){ return Math.abs(v)<deadzone ? 0 : v; }
+function axisVal(gp,def){ const raw=dz(gp.axes[def.index]||0); return def.invert ? -raw : raw; }
+
+function pollGamepad(){
+  const gp=(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g);
+  if(gp){
+    gpadActive=true;
+    const fx=axisVal(gp,AX.forward), fy=axisVal(gp,AX.strafe), rz=axisVal(gp,AX.rotate);
+    drive.x=fx; drive.y=fy; drive.wz=rz;
+    // 全機構コマンド。画面ボタンとパッドの両方から同じsendCommand()を呼ぶ。
+    // hold:true(Lidar補正)は押されている間、この関数の呼び出し周期(50ms、送出ループ参照)ごとに
+    // 連打し続けることでホールドを維持する。BUTTON_PULSE_S(0.15s)より十分短いので途切れない。
+    // それ以外は従来通りエッジ検出(押した瞬間の1回だけ)。
+    CFG.commands.forEach(c=>{
+      const idx=BTN[c.id]; if(idx==null) return;
+      const b=gp.buttons[idx]; if(!b) return;
+      if(c.hold){
+        if(b.pressed) sendCommand(c.id);
+      }
+      else if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
+      else if(!b.pressed){ btnHeld[c.id]=false; }
+    });
+    // 追加: 十字キー（エッジ・パルス送出、既存ボタンと同じ仕組み）
+    Object.entries(DPAD).forEach(([id, idx])=>{
+      const b=gp.buttons[idx]; if(!b) return;
+      if(b.pressed && !dpadHeld[id]){ dpadHeld[id]=true; sendCommand(id); }
+      else if(!b.pressed){ dpadHeld[id]=false; }
+    });
+  }else if(gpadActive){
+    gpadActive=false;
+  }
+}
+addEventListener('gamepadconnected',pollGamepad);
+addEventListener('gamepaddisconnected',()=>{
+  gpadActive=false; drive={x:0,y:0,wz:0};
+});
+
+// ===== ページ切り替え（①タスク管理／②操縦。物理コントローラが無くても②だけで操縦できるようにする）=====
+function showPage(n){
+  $('#page1').hidden = n!==1;
+  $('#page2').hidden = n!==2;
+  $('#pageTab1').classList.toggle('active', n===1);
+  $('#pageTab2').classList.toggle('active', n===2);
+  $('#taskActionBar').style.display = n===1 ? '' : 'none';   // 実行/次へは①のタスク専用
+}
+$('#pageTab1').onclick=()=>showPage(1);
+$('#pageTab2').onclick=()=>showPage(2);
+showPage(1);
+
+// ===== 速度2段階・足回り逆転トグル（②操縦ページ。パッド操作にも共通で効く。送出ループで適用）=====
+// driveGrid内で位置調整ボタン(CFG.commandsのgroup:'drive')と2x2で揃うよう、
+// 先にこの2つを追加してから下のCFG.commandsループで残り(位置調整)を追加する（DOM順=表示順）。
+// 倍率は仮置き。実機で走らせながら調整する。
+const SPEED_LEVELS = [
+  {label:'低速', scale:0.5},
+  {label:'高速', scale:1.0},
+];
+let speedLevel=1, driveReversed=false;   // 起動時は高速(等速)から
+const driveGridBox=$('#cmdGridDrive');
+SPEED_LEVELS.forEach((s,i)=>{
+  const b=document.createElement('button'); b.type='button'; b.className='cmdBtn speedBtn';
+  b.textContent=s.label;
+  b.onclick=()=>{ speedLevel=i; renderSpeedButtons(); };
+  driveGridBox.appendChild(b);
+});
+function renderSpeedButtons(){
+  $$('#cmdGridDrive .speedBtn').forEach((b,i)=>b.classList.toggle('on', i===speedLevel));
+}
+renderSpeedButtons();
+const reverseBtn=document.createElement('button');
+reverseBtn.type='button'; reverseBtn.id='reverseToggle'; reverseBtn.className='cmdBtn';
+reverseBtn.textContent='逆転';
+reverseBtn.onclick=()=>{
+  driveReversed=!driveReversed;
+  reverseBtn.classList.toggle('on', driveReversed);
+};
+driveGridBox.appendChild(reverseBtn);
+
+// ===== 機構コマンドボタン（②操縦ページ。CFG.commandsのgroupごとに分けて描画し、意味のまとまり・
+// 使用頻度に応じたサイズで表示する。パッドと同じsendCommand()を呼ぶので実際の動作は共通。
+// screen:false のもの（アームストップ）は誤タップ防止のため描画しない（物理パッドのLBからは引き続き使える）。
+// hold:true のもの（Lidar補正）は押している間だけBUTTON_PULSE_S(0.15s)より短い間隔で連打し続け、
+// 離すと自然にパルスが切れてcan_node.cpp側のホールド判定がOFFに戻る仕組み =====
+const HOLD_REPEAT_MS = 80;
+function bindHoldButton(el, id){
+  let timer=null;
+  const start=(ev)=>{ if(timer) return; sendCommand(id); timer=setInterval(()=>sendCommand(id), HOLD_REPEAT_MS); el.classList.add('on'); ev.preventDefault(); };
+  const stop=()=>{ if(timer){ clearInterval(timer); timer=null; } el.classList.remove('on'); };
+  el.addEventListener('pointerdown', start);
+  ['pointerup','pointercancel','pointerleave'].forEach(evt=>el.addEventListener(evt, stop));
+}
+const cmdGridBoxByGroup={drive:driveGridBox, arm:$('#cmdGridArm'), bell:$('#cmdGridBell'), dpad:$('#cmdGridDpad')};
+CFG.commands.forEach(c=>{
+  if(c.screen===false) return;
+  const box=cmdGridBoxByGroup[c.group]; if(!box) return;
+  const b=document.createElement('button'); b.type='button'; b.className='cmdBtn';
+  b.style.background=c.color; b.style.color=c.colorFg;
+  b.innerHTML = c.icon ? `<span class="cmdIcon">${c.icon}</span>${c.label}` : c.label;
+  if(c.hold){ bindHoldButton(b, c.id); } else { b.onclick=()=>sendCommand(c.id); }
+  box.appendChild(b);
+});
+
+// ===== 直進補正PIDゲイン調整（②操縦ページ下部、開閉式）=====
+// /robot/pid_gain (Float32MultiArray, data=[gain_index, value]) をcan_nodeが直接購読しCAN送信する。
+// RAMのみの反映(STM32電源OFFでf446re_motor_run/main.cの初期値に戻る)。
+// gain_index: 0=Kp 1=Ki 2=Kd 3=補正上限(CORR_MAX) 4=符号(SIGN)。値はSTM32側の初期値に合わせてある。
+const GAIN_DEFS = [
+  {idx:0, label:'Kp', min:0,   max:60, step:0.5, def:30},
+  {idx:1, label:'Ki', min:0,   max:20, step:0.5, def:6},
+  {idx:2, label:'Kd', min:0,   max:10, step:0.2, def:2},
+  {idx:3, label:'上限', min:0, max:50, step:1,   def:25},
+];
+function sendGain(idx, value){
+  if(demo() || !connected || !gainPub) return;
+  gainPub.publish(new ROSLIB.Message({data:[idx, value]}));
+}
+const gainBodyBox=$('#gainBody');
+GAIN_DEFS.forEach(g=>{
+  const row=document.createElement('div'); row.className='gainRow';
+  const lbl=document.createElement('span'); lbl.className='gainLbl'; lbl.textContent=g.label;
+  const input=document.createElement('input'); input.type='range';
+  input.min=g.min; input.max=g.max; input.step=g.step; input.value=g.def;
+  const val=document.createElement('span'); val.className='gainVal mono'; val.textContent=g.def.toFixed(1);
+  input.oninput=()=>{ const v=parseFloat(input.value); val.textContent=v.toFixed(1); sendGain(g.idx, v); };
+  row.append(lbl, input, val);
+  gainBodyBox.appendChild(row);
+});
+let gainSign=1;
+const gainSignBtn=document.createElement('button'); gainSignBtn.type='button';
+gainSignBtn.id='gainSignToggle'; gainSignBtn.className='cmdBtn';
+gainSignBtn.textContent='符号: +';
+gainSignBtn.onclick=()=>{
+  gainSign = gainSign===1 ? -1 : 1;
+  gainSignBtn.textContent = '符号: ' + (gainSign===1?'+':'-');
+  sendGain(4, gainSign);
+};
+gainBodyBox.appendChild(gainSignBtn);
+
+// ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
+// pose(推定側の座標系, rad) → フィールド座標(m, 原点左下)。CFG.teams[team].poseToField で機体/座標規約を吸収
+function poseToFieldXY(pose, team){
+  const tr=CFG.teams[team].poseToField;
+  return { x: tr.ox + tr.sx*pose.x, y: tr.oy + tr.sy*pose.y, theta: tr.thetaSign*pose.theta + tr.thetaOffset };
+}
+function sizeFieldCanvas(){
+  const box=$('#fieldCanvasBox'), cv=$('#fieldCanvas');
+  const r=box.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  cv.width=Math.max(1,Math.round(r.width*dpr)); cv.height=Math.max(1,Math.round(r.height*dpr));
+}
+// iPhone横画面(landscape)前提のため、フィールドを90°回転して表示する。
+// field x(左右10m, チームで左右反転)→画面の縦方向、field y(奥行12m, 手前=自陣0→奥=城12)→画面の横方向（左→右で前進）
+// ext={x0,x1,y0,y1}: 表示するフィールド座標の範囲。常に自陣片面のみを表示する
+function ourHalfExt(){
+  const F=CFG.field, teamCfg=CFG.teams[CFG.team];
+  const x0 = teamCfg.ourHalf==='left' ? 0 : F.size.x/2;
+  const x1 = teamCfg.ourHalf==='left' ? F.size.x/2 : F.size.x;
+  return {x0, x1, y0:0, y1:F.size.y};
+}
+function fieldFit(cv,ext){
+  const fw=ext.y1-ext.y0, fh=ext.x1-ext.x0;
+  const scale=Math.min(cv.width/fw, cv.height/fh);
+  return {scale, offX:(cv.width-scale*fw)/2, offY:(cv.height-scale*fh)/2, x0:ext.x0, y0:ext.y0, fw, fh};
+}
+function f2p(fx,fy,tr){ return {px: tr.offX+(fy-tr.y0)*tr.scale, py: tr.offY+(fx-tr.x0)*tr.scale}; }
+function p2f(px,py,tr){ return {fx: (py-tr.offY)/tr.scale+tr.x0, fy: (px-tr.offX)/tr.scale+tr.y0}; }
+// 2つの#rrggbb色を不透明のまま混ぜる（半透明合成は使わず、常にベタ塗りの単色を作る）
+function mixHex(hexA,hexB,t){
+  const pa=parseInt(hexA.slice(1),16), pb=parseInt(hexB.slice(1),16);
+  const ch=(v,s)=>(v>>s)&0xFF;
+  const r=Math.round(ch(pa,16)*(1-t)+ch(pb,16)*t);
+  const g=Math.round(ch(pa,8)*(1-t)+ch(pb,8)*t);
+  const b=Math.round(ch(pa,0)*(1-t)+ch(pb,0)*t);
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function drawRectF(ctx,tr,x0,y0,x1,y1,opt={}){
+  const a=f2p(x0,y1,tr), b=f2p(x1,y0,tr);
+  const x=Math.min(a.px,b.px), y=Math.min(a.py,b.py), w=Math.abs(b.px-a.px), h=Math.abs(b.py-a.py);
+  if(opt.fill){ctx.fillStyle=opt.fill; ctx.fillRect(x,y,w,h);}
+  if(opt.stroke){ctx.strokeStyle=opt.stroke; ctx.lineWidth=opt.lw||Math.max(1,tr.scale*0.02); ctx.strokeRect(x,y,w,h);}
+  if(opt.label){ ctx.fillStyle=opt.labelColor||'#9fb0b8'; ctx.font=(opt.fontSize||Math.max(9,tr.scale*0.28))+'px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(opt.label, x+w/2, y+h/2); }
+}
+function drawCircleF(ctx,tr,cx,cy,r,opt={}){
+  const c=f2p(cx,cy,tr), rp=r*tr.scale;
+  ctx.beginPath(); ctx.arc(c.px,c.py,rp,0,Math.PI*2);
+  if(opt.fill){ctx.fillStyle=opt.fill; ctx.fill();}
+  if(opt.stroke){ctx.strokeStyle=opt.stroke; ctx.lineWidth=opt.lw||Math.max(1,tr.scale*0.02); ctx.stroke();}
+  if(opt.label){ ctx.fillStyle=opt.labelColor||'#9fb0b8'; ctx.font=(opt.fontSize||Math.max(9,tr.scale*0.22))+'px sans-serif';
+    ctx.textAlign='center'; ctx.fillText(opt.label, c.px, c.py-rp-4); }
+}
+let trailOn=true;
+$('#trailToggle').onchange=()=>{ trailOn=$('#trailToggle').checked; drawField(); };
+function setTeam(team){
+  // チーム切り替え前に進行中の移動・経由地チェーンを破棄する(切り替え後の座標変換で
+  // 積み残しの経由地を送ると、意図しない位置に機体が向かってしまうため)
+  clearGoal(); sendGoalCancel();
+  CFG.team=team;
+  $('#teamRed').classList.toggle('active', team==='red');
+  $('#teamBlue').classList.toggle('active', team==='blue');
+  $('#teamRed').style.background = team==='red' ? CFG.teams.red.color : '';
+  $('#teamBlue').style.background = team==='blue' ? CFG.teams.blue.color : '';
+  drawField();
+}
+$('#teamRed').onclick=()=>setTeam('red');
+$('#teamBlue').onclick=()=>setTeam('blue');
+setTeam(CFG.team);
+updateNavModeUI();
+sizeFieldCanvas(); drawField();   // フィールドマップは常時表示なので起動時点でサイズ確定・初回描画
+
+// 自陣の外側エッジからの距離d(m) → 現在表示中チームの実フィールドx座標。RED:外側エッジ=0、BLUE:外側エッジ=size.x
+function teamX(d){
+  const teamCfg=CFG.teams[CFG.team];
+  return teamCfg.ourHalf==='left' ? d : CFG.field.size.x - d;
+}
+function drawField(){
+  const cv=$('#fieldCanvas'); if(cv.width<2||cv.height<2) return;
+  const ctx=cv.getContext('2d'); const F=CFG.field, team=CFG.team, teamCfg=CFG.teams[team];
+  const enemyColor=CFG.teams[team==='red'?'blue':'red'].color;
+  const tr=fieldFit(cv,ourHalfExt());
+  const MONO='ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace';   // canvasはCSS var()を解決しないため実フォント名で指定
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale); ctx.clip();   // 自陣フェンスの外側には何も描画しない
+  ctx.fillStyle='#101a1f'; ctx.fillRect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale);
+
+  // ゾーンごとにベタ塗りで色分け（半透明合成は使わない）。手前＝自陣スタート寄りほど濃く、奥＝城寄りほど淡く、
+  // 3段階でくっきり切り替えることでエリア1/2/3の境界が一目でわかるようにする
+  const ZONE_MIX=[0.35,0.55,0.75];
+  F.zones.forEach((z,i)=>{
+    // エリア3(自陣側)は敵の城領域扱いなので、自チーム色ではなく相手チームの色で塗る(進入不可)
+    const zoneColor = z.label==='エリア3' ? enemyColor : teamCfg.color;
+    drawRectF(ctx,tr,0,z.y0,F.size.x,z.y1,{fill:mixHex(zoneColor,'#101a1f',ZONE_MIX[i]??0.75)});
+  });
+
+  // グリッド: マイナー(1m,薄)とメジャー(2m,目盛りと同じ間隔でやや強め)の二段構成
+  const drawGridLines=(step,color,lw)=>{
+    ctx.strokeStyle=color; ctx.lineWidth=lw;
+    for(let gx=0; gx<=F.size.x; gx+=step){ if(step===1 && gx%2===0) continue;
+      const a=f2p(gx,0,tr), b=f2p(gx,F.size.y,tr);
+      ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+    for(let gy=0; gy<=F.size.y; gy+=step){ if(step===1 && gy%2===0) continue;
+      const a=f2p(0,gy,tr), b=f2p(F.size.x,gy,tr);
+      ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+  };
+  drawGridLines(1,'#1c262c',1);
+  drawGridLines(2,'#33434c',1);
+  ctx.fillStyle='#a9b6bc'; ctx.font=`10px ${MONO}`;
+  // 横軸目盛り＝奥行y(手前0〜奥12)。縦軸目盛り＝左右x(0〜10)
+  ctx.textAlign='center';
+  for(let gy=0; gy<=F.size.y; gy+=2){ const p=f2p(0,gy,tr); ctx.fillText(String(gy), p.px, tr.offY+F.size.x*tr.scale+12); }
+  ctx.textAlign='right';
+  for(let gx=0; gx<=F.size.x; gx+=2){ const p=f2p(gx,0,tr); ctx.fillText(String(gx), tr.offX-5, p.py+3); }
+
+  // 寸法線（奥行12.0m）: 余白があるときだけ上マージンにブラケット表示
+  if(tr.offY>16){
+    const py=tr.offY*0.52, xL=tr.offX, xR=tr.offX+tr.fw*tr.scale;
+    ctx.strokeStyle='#5c6b72'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(xL,py); ctx.lineTo(xR,py); ctx.stroke();
+    [xL,xR].forEach(x=>{ ctx.beginPath(); ctx.moveTo(x,py-4); ctx.lineTo(x,py+4); ctx.stroke(); });
+    const label=F.size.y.toFixed(1)+' m';
+    ctx.font=`11px ${MONO}`;
+    const tw=ctx.measureText(label).width, cx=(xL+xR)/2;
+    ctx.fillStyle='#101a1f'; ctx.fillRect(cx-tw/2-5,py-8,tw+10,16);
+    ctx.fillStyle='#c7d0d4'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label,cx,py+0.5); ctx.textBaseline='alphabetic';
+  }
+
+  // 中央仕切り線
+  { const a=f2p(F.centerDivider.x,0,tr), b=f2p(F.centerDivider.x,F.size.y,tr);
+    ctx.strokeStyle='#4a5a63'; ctx.lineWidth=Math.max(1.5,tr.scale*0.02);
+    ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+
+  // ゾーン境界（実線ではっきり）＋ラベル
+  F.zones.forEach(z=>{
+    if(z.y1<F.size.y){ const a=f2p(0,z.y1,tr), b=f2p(F.size.x,z.y1,tr);
+      ctx.strokeStyle='#0d1316'; ctx.lineWidth=Math.max(1.5,tr.scale*0.018);
+      ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke(); }
+    const lp=f2p(tr.x0+0.35,(z.y0+z.y1)/2,tr);   // tr.x0基準（自陣の外側エッジ）にすることでRED/BLUE両方で画面内に収まる
+    ctx.fillStyle='#e6eaec'; ctx.font=`bold 12px ${MONO}`; ctx.textAlign='left';
+    ctx.fillText(z.label, lp.px, lp.py);
+  });
+
+  // フェンス（エリア2内3本＋エリア2/3境界の完全遮断1本、隙間以外を太線で描く）
+  ctx.strokeStyle='#c7d0d4'; ctx.lineCap='round'; ctx.lineWidth=Math.max(3,tr.scale*0.05);
+  F.stripBoundaries.forEach((y,i)=>{
+    const [d0,d1]=F.fenceBlockedRanges[i];
+    const a=f2p(teamX(d0),y,tr), b=f2p(teamX(d1),y,tr);
+    ctx.beginPath(); ctx.moveTo(a.px,a.py); ctx.lineTo(b.px,b.py); ctx.stroke();
+  });
+  // 自陣の外周を一周囲うフェンス
+  { const ext=ourHalfExt();
+    drawRectF(ctx,tr,ext.x0,ext.y0,ext.x1,ext.y1,{stroke:'#c7d0d4', lw:Math.max(3,tr.scale*0.05)});
+  }
+
+  // スタートゾーン（自チームのみ。写真の角の塗り潰し四角に寄せて濃い塗りに）
+  const sz=F.startZones[team];
+  drawRectF(ctx,tr,sz.x0,sz.y0,sz.x1,sz.y1,
+    {fill:teamCfg.color+'d0', stroke:teamCfg.color, label:team.toUpperCase(), labelColor:'#fff', fontSize:11});
+
+  // 城門（両チーム共通の設備）
+  drawRectF(ctx,tr, F.castleGate.cx-F.castleGate.w/2, F.castleGate.cy-F.castleGate.h/2,
+    F.castleGate.cx+F.castleGate.w/2, F.castleGate.cy+F.castleGate.h/2,
+    {fill:'#4a5a63', stroke:'#c7d0d4', label:F.castleGate.label, labelColor:'#101a1f'});
+
+  // 関所（自チームのみ）
+  F.checkpoints[team].forEach(p=>drawCircleF(ctx,tr,p.x,p.y,p.r,{fill:teamCfg.color+'a0', stroke:teamCfg.color}));
+
+  // 石垣（城）。写真の柱(ポール)風に、土台＋支柱の丸を重ねて描く
+  F.castleBase.forEach(b=>{
+    drawRectF(ctx,tr,b.cx-b.size/2,b.cy-b.size/2,b.cx+b.size/2,b.cy+b.size/2,{fill:'#3a4850', stroke:'#6b7a82'});
+    drawCircleF(ctx,tr,b.cx,b.cy,b.size*0.22,{fill:'#8a969c', stroke:'#c7d0d4', label:b.label});
+  });
+
+  // 各種ボールスポット（配置図から後日追記。現状は空でよい）
+  F.ballSpots.forEach(b=>drawCircleF(ctx,tr,teamX(b.x),b.y,b.r||0.1,{fill:'#efa23a80', stroke:'#efa23a', label:b.label}));
+
+  // ここまでが地形の描画。ここから先(機体マーカー・軌跡・目標地点)はフィールド範囲外に出ても
+  // 非表示にはしたくないので、クリップを解除してから描く
+  ctx.restore();
+
+  if(!lastPose){
+    ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(tr.offX,tr.offY,tr.fw*tr.scale,tr.fh*tr.scale);
+    ctx.fillStyle='#e6eaec'; ctx.font='bold 15px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('位置なし', tr.offX+tr.fw*tr.scale/2, tr.offY+tr.fh*tr.scale/2);
+    $('#qualityHint').style.display='none';
+    return;
+  }
+
+  // 軌跡（パンくず）
+  if(trailOn && poseHistory.length>1){
+    ctx.strokeStyle=teamCfg.color+'80'; ctx.lineWidth=Math.max(1,tr.scale*0.012); ctx.beginPath();
+    poseHistory.forEach((p,i)=>{ const fp=poseToFieldXY(p,team); const c=f2p(fp.x,fp.y,tr);
+      i===0?ctx.moveTo(c.px,c.py):ctx.lineTo(c.px,c.py); });
+    ctx.stroke();
+  }
+
+  // 品質が低いときは点滅（薄く）＋数値表示
+  const lowQ = lastQuality!=null && lastQuality<CFG.map.qualityWarn;
+  const alpha = lowQ ? (0.35+0.45*Math.abs(Math.sin(performance.now()/300))) : 1;
+  $('#qualityHint').style.display = lowQ ? 'block' : 'none';
+  if(lowQ) $('#qualityVal').textContent = lastQuality.toFixed(2);
+
+  // 機体マーカー（向き付き三角形）。回転は画面座標系で直接計算する（θ=0→右向き, θ=90°→上向き）
+  const fp=poseToFieldXY(lastPose,team);
+  const base=f2p(fp.x,fp.y,tr);
+  const R=0.35*tr.scale, r=0.22*tr.scale, h=fp.theta;
+  const tip={px:base.px+R*Math.cos(h),     py:base.py-R*Math.sin(h)};
+  const bl ={px:base.px+r*Math.cos(h+2.5), py:base.py-r*Math.sin(h+2.5)};
+  const br ={px:base.px+r*Math.cos(h-2.5), py:base.py-r*Math.sin(h-2.5)};
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle='#efa23a';
+  ctx.beginPath(); ctx.moveTo(tip.px,tip.py); ctx.lineTo(bl.px,bl.py); ctx.lineTo(br.px,br.py); ctx.closePath();
+  ctx.fill(); ctx.strokeStyle='#0d1316'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // 移動目標（自陣タップで設定。到達 or キャンセルで goalActive=false になり消える）
+  if(goalActive && goalField){
+    const gp=f2p(goalField.x,goalField.y,tr);
+    ctx.strokeStyle='#efa23a'; ctx.lineWidth=Math.max(1,tr.scale*0.015); ctx.setLineDash([6,4]);   // --warn（canvasはvar()を解決しないため実色指定）
+    ctx.beginPath(); ctx.moveTo(base.px,base.py); ctx.lineTo(gp.px,gp.py); ctx.stroke();
+    ctx.setLineDash([]);
+    const m=Math.max(6,tr.scale*0.18);
+    ctx.strokeStyle='#efa23a'; ctx.lineWidth=Math.max(2,tr.scale*0.03);
+    ctx.beginPath(); ctx.moveTo(gp.px-m,gp.py-m); ctx.lineTo(gp.px+m,gp.py+m); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gp.px-m,gp.py+m); ctx.lineTo(gp.px+m,gp.py-m); ctx.stroke();
+  }
+}
+addEventListener('resize',()=>{ sizeFieldCanvas(); drawField(); });
+addEventListener('orientationchange',()=>{ sizeFieldCanvas(); drawField(); });
+setInterval(drawField, 120); // 品質点滅・軌跡追従のための定期再描画（常時表示）
+
+// ===== 移動コマンドB（自陣表示タップ→/robot/goal）。運動学はnav_node側で実装済み =====
+// フィールド座標(m) → pose座標系。poseToFieldXY の逆変換
+function fieldToPoseXY(fx,fy,team){
+  const tr=CFG.teams[team].poseToField;
+  return { x:(fx-tr.ox)/tr.sx, y:(fy-tr.oy)/tr.sy };
+}
+// フィールド角度(rad) → pose座標系の角度。上のxy版と対になる逆変換
+function fieldThetaToPoseTheta(fieldTheta,team){
+  const tr=CFG.teams[team].poseToField;
+  return (fieldTheta - tr.thetaOffset) / tr.thetaSign;
+}
+function updateNavModeUI(){
+  const el=$('#navMode');
+  el.textContent='モード: '+(navMode==='auto'?'自動移動中':'手動');
+  el.style.color = navMode==='auto' ? 'var(--warn)' : '';
+}
+function clearGoal(){ goalActive=false; goalField=null; navMode='manual'; taskChainQueue=[]; updateNavModeUI(); drawField(); }
+const ROBOT_HALF_SIZE_M = 0.4;   // 機体800×800mmの半分
+// 機体前面の目標位置(fx,fy,向きfieldTheta)→ 機体中心の位置に変換。向きベクトルは(-sin(theta),cos(theta))
+// なので、その逆方向に半分オフセットする。中継地点(フェンス通過用)には使わず、実際に対象物へ正対する
+// 最終目標にだけ使うこと(中継地点は中心がそこを通れば安全という前提の計算値のため)
+function frontToCenterField(fx,fy,fieldTheta){
+  return { x: fx + ROBOT_HALF_SIZE_M*Math.sin(fieldTheta), y: fy - ROBOT_HALF_SIZE_M*Math.cos(fieldTheta) };
+}
+// fx,fyは機体中心の目標位置(フィールド座標)として扱う
+function sendGoal(fx,fy,fieldTheta=0){
+  goalField={x:fx,y:fy}; goalActive=true; navMode='auto'; updateNavModeUI(); drawField();
+  if(demo()) return;
+  if(connected && goalPub){
+    const p=fieldToPoseXY(fx,fy,CFG.team);
+    const theta=fieldThetaToPoseTheta(fieldTheta,CFG.team);
+    goalPub.publish(new ROSLIB.Message({
+      header:{frame_id:'map', stamp:{sec:0,nanosec:0}},
+      pose:{position:{x:p.x,y:p.y,z:0}, orientation:{x:0,y:0,z:Math.sin(theta/2),w:Math.cos(theta/2)}},
+    }));
+  }
+}
+function sendGoalCancel(){
+  if(demo()) return;
+  if(connected && goalCancelPub) goalCancelPub.publish(new ROSLIB.Message({data:true}));
+}
+function onFieldTap(ev){
+  const cv=$('#fieldCanvas');
+  const rect=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  const px=(ev.clientX-rect.left)*dpr, py=(ev.clientY-rect.top)*dpr;
+  const ext=ourHalfExt(), tr=fieldFit(cv,ext);
+  const {fx,fy}=p2f(px,py,tr);
+  if(fx<ext.x0||fx>ext.x1||fy<ext.y0||fy>ext.y1) return;   // 範囲外タップは無視
+  if(fy>=CFG.field.stripBoundaries[CFG.field.stripBoundaries.length-1]) return;   // エリア3は進入不可なのでタップ無視
+  const c=frontToCenterField(fx,fy,0);   // タップ地点を機体前面とみなす(向きは0=奥向き固定)
+  sendGoal(c.x,c.y,0);
+}
+$('#fieldCanvas').addEventListener('pointerdown', onFieldTap);
+$('#goalCancel').onclick=()=>{ clearGoal(); sendGoalCancel(); };
+$('#resetPose').onclick=()=>{
+  // スタートゾーンに機体を正対させて置いた瞬間に押す想定。進行中の移動・軌跡も一緒に破棄する
+  clearGoal(); sendGoalCancel();
+  poseHistory=[]; lastPose=null; drawField();
+  if(!demo() && connected && resetPosePub) resetPosePub.publish(new ROSLIB.Message({}));
+};
+
+// ===== ROS 接続 =====
+function connect(){
+  if(typeof ROSLIB==='undefined'){ alert('roslib.min.js が見つかりません。HTMLと同じフォルダに置いてください。今はデモのまま動作します。'); return; }
+  disconnect();
+  ros=new ROSLIB.Ros({url:$('#url').value.trim()});
+  ros.on('connection',()=>{ connected=true; $('#conn').classList.add('on'); $('#btnConn').textContent='切断';
+    cmdVel=new ROSLIB.Topic({ros,name:CFG.cmdVelTopic,messageType:CFG.messageTwist});
+    cmdStr=new ROSLIB.Topic({ros,name:CFG.commandTopic,messageType:CFG.messageString});
+    telem =new ROSLIB.Topic({ros,name:CFG.telemTopic,messageType:CFG.messageString});
+    telem.subscribe(m=>{ try{applyTelem(JSON.parse(m.data)); lastTelem=performance.now();}catch(e){} });
+    goalPub=new ROSLIB.Topic({ros,name:CFG.goalTopic,messageType:CFG.messagePoseStamped});
+    goalCancelPub=new ROSLIB.Topic({ros,name:CFG.goalCancelTopic,messageType:CFG.messageBool});
+    resetPosePub=new ROSLIB.Topic({ros,name:CFG.resetPoseTopic,messageType:CFG.messageEmpty});
+    gainPub=new ROSLIB.Topic({ros,name:CFG.pidGainTopic,messageType:CFG.messageFloat32MultiArray});
+    navState=new ROSLIB.Topic({ros,name:CFG.navStateTopic,messageType:CFG.messageString});
+    navState.subscribe(m=>{
+      if(m.data!=='manual' && m.data!=='auto') return;
+      navMode=m.data;
+      if(navMode==='manual'){
+        goalActive=false; goalField=null;   // 到達 or チーム側キャンセルで消える
+        // キャンセルされた場合はclearGoal()で既にtaskChainQueueが空になっているので、
+        // ここでキューが残っていれば「到達した」ケースとみなして次の経由地を自動送信する
+        if(taskChainQueue.length>0){
+          const next=taskChainQueue.shift();
+          sendGoal(next.x, next.y, next.theta);
+        }
+      }
+      updateNavModeUI(); drawField();
+    });
+  });
+  ros.on('error',()=>{});
+  ros.on('close',()=>{ connected=false; $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; });
+}
+function disconnect(){ if(ros){try{ros.close();}catch(e){}} ros=null; connected=false;
+  $('#conn').classList.remove('on'); $('#btnConn').textContent='接続'; }
+$('#btnConn').onclick=()=>{
+  if(connected){ disconnect(); return; }
+  $('#demo').checked=false;   // 接続を押したら実機操作の意思とみなし、デモは自動でOFFにする
+  connect();
+};
+
+function sendCommand(id){
+  flash(id);
+  if(connected && !demo() && cmdStr) cmdStr.publish(new ROSLIB.Message({data:id}));
+}
+function flash(id){ /* 視覚フィードバックは押下時のCSSで処理 */ }
+
+// ===== 送出ループ（ハートビート兼）=====
+setInterval(()=>{
+  pollGamepad();
+  // 手動優先: 自動移動中にスティックが非ゼロになったら goal_cancel を送って手動へ戻す
+  if(navMode==='auto' && (drive.x!==0 || drive.y!==0 || drive.wz!==0)){
+    clearGoal(); sendGoalCancel();
+  }
+  const v = drive;
+  const sc = SPEED_LEVELS[speedLevel].scale;     // 速度2段階トグル
+  const rv = driveReversed ? -1 : 1;             // 足回り逆転トグル（前後・左右のみ反転。旋回向きはそのまま）
+  if(connected && !demo() && cmdVel){
+    cmdVel.publish(new ROSLIB.Message({
+      linear:{x:v.x*CFG.maxLin*sc*rv, y:v.y*CFG.maxLin*sc*rv, z:0},
+      angular:{x:0,y:0,z:v.wz*CFG.maxAng*sc}
+    }));
+    pubCount++;
+  }
+}, 1000/CFG.rateHz);
+
+setInterval(()=>{ $('#rate').textContent=pubCount+' Hz'; pubCount=0; }, 1000);
+
+// ===== テレメトリ描画 =====
+function applyTelem(t){
+  if(t.pose!=null){
+    const p=t.pose;                                       // x,y=m, theta=rad（CLAUDE.md契約）
+    lastPose={x:Number(p.x), y:Number(p.y), theta:Number(p.theta)};
+    poseHistory.push(lastPose);
+    if(poseHistory.length>CFG.map.trailMax) poseHistory.shift();
+  }
+  if(t.quality!=null) lastQuality=Number(t.quality);
+  drawField();
+}
+
+// ===== デモ（rosbridge無しで端末UIを検証）=====
+let demoPose={x:0,y:0,theta:0};
+setInterval(()=>{
+  if(!demo()) return;
+  { const th=demoPose.theta+drive.wz*0.06;                // theta は rad。±πに正規化して発散を防ぐ
+    demoPose={x:demoPose.x+drive.x*0.02, y:demoPose.y+drive.y*0.02, theta:Math.atan2(Math.sin(th),Math.cos(th))}; }
+  applyTelem({pose:demoPose});
+  lastTelem=performance.now();
+}, 120);
+</script>
+</body>
+</html>
