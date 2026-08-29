@@ -433,7 +433,7 @@ let ros=null, connected=false;
 let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
 let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null, gainPub=null;
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
-let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
+let goalField=null, goalFieldTheta=0, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
 const demo=()=>$('#demo').checked;
 
 // ===== タスク管理 =====
@@ -928,7 +928,7 @@ function updateNavModeUI(){
   el.textContent='モード: '+(navMode==='auto'?'自動移動中':'手動');
   el.style.color = navMode==='auto' ? 'var(--warn)' : '';
 }
-function clearGoal(){ goalActive=false; goalField=null; navMode='manual'; taskChainQueue=[]; updateNavModeUI(); drawField(); }
+function clearGoal(){ goalActive=false; goalField=null; goalFieldTheta=0; navMode='manual'; taskChainQueue=[]; updateNavModeUI(); drawField(); }
 const ROBOT_HALF_SIZE_M = 0.4;   // 機体800×800mmの半分
 // 機体前面の目標位置(fx,fy,向きfieldTheta)→ 機体中心の位置に変換。向きベクトルは(-sin(theta),cos(theta))
 // なので、その逆方向に半分オフセットする。中継地点(フェンス通過用)には使わず、実際に対象物へ正対する
@@ -938,7 +938,7 @@ function frontToCenterField(fx,fy,fieldTheta){
 }
 // fx,fyは機体中心の目標位置(フィールド座標)として扱う
 function sendGoal(fx,fy,fieldTheta=0){
-  goalField={x:fx,y:fy}; goalActive=true; navMode='auto'; updateNavModeUI(); drawField();
+  goalField={x:fx,y:fy}; goalFieldTheta=fieldTheta; goalActive=true; navMode='auto'; updateNavModeUI(); drawField();
   if(demo()) return;
   if(connected && goalPub){
     const p=fieldToPoseXY(fx,fy,CFG.team);
@@ -952,6 +952,17 @@ function sendGoal(fx,fy,fieldTheta=0){
 function sendGoalCancel(){
   if(demo()) return;
   if(connected && goalCancelPub) goalCancelPub.publish(new ROSLIB.Message({data:true}));
+}
+// navMode='manual'への遷移(到達 or キャンセル)で共通の後処理。実機(navState.subscribe)・
+// デモ(下のgo-to-pointシミュレーション)の両方から呼ぶ
+function onGoalManual(){
+  goalActive=false; goalField=null; goalFieldTheta=0;
+  // キャンセルの場合はclearGoal()で既にtaskChainQueueが空になっているので、
+  // ここでキューが残っていれば「到達した」ケースとみなして次の経由地を自動送信する
+  if(taskChainQueue.length>0){
+    const next=taskChainQueue.shift();
+    sendGoal(next.x, next.y, next.theta);
+  }
 }
 function onFieldTap(ev){
   const cv=$('#fieldCanvas');
@@ -991,15 +1002,7 @@ function connect(){
     navState.subscribe(m=>{
       if(m.data!=='manual' && m.data!=='auto') return;
       navMode=m.data;
-      if(navMode==='manual'){
-        goalActive=false; goalField=null;   // 到達 or チーム側キャンセルで消える
-        // キャンセルされた場合はclearGoal()で既にtaskChainQueueが空になっているので、
-        // ここでキューが残っていれば「到達した」ケースとみなして次の経由地を自動送信する
-        if(taskChainQueue.length>0){
-          const next=taskChainQueue.shift();
-          sendGoal(next.x, next.y, next.theta);
-        }
-      }
+      if(navMode==='manual') onGoalManual();
       updateNavModeUI(); drawField();
     });
   });
@@ -1054,11 +1057,51 @@ function applyTelem(t){
 }
 
 // ===== デモ（rosbridge無しで端末UIを検証）=====
+// 実行ボタン(goalActive中)は、実機ではnav_node.pyがgo-to-point制御をしている。デモではそれをJSで
+// 再現し、フィールド上の疑似機体がちゃんと目標地点まで歩くようにする(定数はnav_node.pyと合わせてある)。
+const DEMO_REACH_DIST_M = 0.15, DEMO_REACH_ANGLE_RAD = 0.26;
+const DEMO_MAX_LIN = 0.3, DEMO_MAX_ANG = 0.5, DEMO_KP_LIN = 1.0, DEMO_KP_ANG = 1.0;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const normAngle=a=>Math.atan2(Math.sin(a),Math.cos(a));
+// (x,y)を方向を保ったまま大きさだけmax_magに制限する。x/yを別々にクランプすると、
+// 片方だけ誤差が大きい場合でも漏れ込み分でもう片方も上限に張り付き、斜め移動になってしまう
+function clampVec2(x,y,maxMag){
+  const mag=Math.hypot(x,y);
+  if(mag<=maxMag || mag===0) return [x,y];
+  const scale=maxMag/mag;
+  return [x*scale, y*scale];
+}
 let demoPose={x:0,y:0,theta:0};
 setInterval(()=>{
   if(!demo()) return;
-  { const th=demoPose.theta+drive.wz*0.06;                // theta は rad。±πに正規化して発散を防ぐ
-    demoPose={x:demoPose.x+drive.x*0.02, y:demoPose.y+drive.y*0.02, theta:Math.atan2(Math.sin(th),Math.cos(th))}; }
+  const dt=0.12;   // このsetIntervalの周期(秒)
+  let vx=0, vy=0, wz=0;
+  if(navMode==='auto' && goalActive && goalField){
+    // goalField(フィールド座標)をpose座標系に変換してから、nav_node.pyと同じgo-to-point計算をする
+    const gp=fieldToPoseXY(goalField.x,goalField.y,CFG.team);
+    const gTheta=fieldThetaToPoseTheta(goalFieldTheta,CFG.team);
+    const ex=gp.x-demoPose.x, ey=gp.y-demoPose.y;
+    const dtheta=normAngle(gTheta-demoPose.theta);
+    if(Math.hypot(ex,ey)<=DEMO_REACH_DIST_M && Math.abs(dtheta)<=DEMO_REACH_ANGLE_RAD){
+      // 実機のnavState('manual')受信相当。navMode='manual'を先に入れてからonGoalManual()を呼ぶ
+      // (onGoalManual()内でキュー次段があればsendGoal()がnavMode='auto'に戻すので、順序が逆だと打ち消される)
+      navMode='manual'; onGoalManual(); updateNavModeUI(); drawField();
+    }else{
+      const c=Math.cos(demoPose.theta), s=Math.sin(demoPose.theta);
+      [vx,vy]=clampVec2(DEMO_KP_LIN*(ex*c+ey*s), DEMO_KP_LIN*(-ex*s+ey*c), DEMO_MAX_LIN);
+      wz=clamp(DEMO_KP_ANG*dtheta, -DEMO_MAX_ANG, DEMO_MAX_ANG);
+    }
+  }else{
+    // 手動: スティック入力をそのまま積分(係数はデモ用の見た目調整、物理的な速度とは対応していない)
+    vx=drive.x*(0.02/dt); vy=drive.y*(0.02/dt); wz=drive.wz*(0.06/dt);
+  }
+  // vx,vyはここまで機体座標系(実機の/cmd_velと同じ規約)。実機は機体自身が物理的に回転しているので
+  // 機体座標系の指令がそのまま正しく動くが、シミュレーションでは先にワールド座標系(pose)へ逆回転
+  // 変換してから積分しないと、回転中に完全に違う方向へ進んでしまう
+  const cTh=Math.cos(demoPose.theta), sTh=Math.sin(demoPose.theta);
+  const worldVx = vx*cTh - vy*sTh, worldVy = vx*sTh + vy*cTh;
+  const th=demoPose.theta+wz*dt;
+  demoPose={x:demoPose.x+worldVx*dt, y:demoPose.y+worldVy*dt, theta:normAngle(th)};
   applyTelem({pose:demoPose});
   lastTelem=performance.now();
 }, 120);
