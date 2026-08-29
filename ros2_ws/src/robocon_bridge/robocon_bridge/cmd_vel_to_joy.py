@@ -15,7 +15,10 @@ PUBLISH_HZ = 20.0
 AXIS_ST_RX = 4
 AXIS_ST_RY = 5
 AXIS_CROSS_BT = 6
-#AXIS_CROSS_BT_R = 7
+# 旋回速度の大きさ(0.0〜1.0)。axes[6]は方向(-1/0/1)のみで速度の大きさを運べないため、
+# 速度2段階トグル等でangular.zが小さくなっても旋回速度が変わらない問題があった。
+# 別軸として大きさを追加で送り、pscon_node/can_node/STM32側で実際の旋回速度に反映する
+AXIS_CROSS_BT_MAG = 7
 
 TURN_DEADZONE = 0.1
 
@@ -155,8 +158,10 @@ class CmdVelToJoyNode(Node):
             axes[AXIS_ST_RX] = self._last_cmd.linear.y
             if self._last_cmd.angular.z > TURN_DEADZONE:
                 axes[AXIS_CROSS_BT] = 1.0
+                axes[AXIS_CROSS_BT_MAG] = min(1.0, abs(self._last_cmd.angular.z))
             elif self._last_cmd.angular.z < -TURN_DEADZONE:
                 axes[AXIS_CROSS_BT] = -1.0
+                axes[AXIS_CROSS_BT_MAG] = min(1.0, abs(self._last_cmd.angular.z))
 
             #now = self.get_clock().now()
             for idx, until in self._pulse_until.items():
