@@ -12,12 +12,26 @@
 
 | byte | 内容 |
 |---|---|
-| `can_send_data[0]` | モード種別。`0b11110000`=通常（並進）、`0b11110001`=旋回中、`0b00110001`=Lidar位置補正 |
+| `can_send_data[0]` | モード種別。`0b11110000`=通常（並進）、`0b11110001`=旋回中、`0b00110001`=Lidar位置補正、`0b01000000`=直進補正PIDゲイン設定（下記1-1参照） |
 | `can_send_data[1]` | 通常時: y値（前後、st_ry由来）／旋回時: 旋回方向ビット(`cross_data`の下位2bit) |
 | `can_send_data[2]` | 通常時: x値（左右、st_rx由来）／旋回時: 旋回速度の大きさ0〜100(`turn_speed_data`由来)。0(未対応の旧実装からの受信を含む)の場合、STM32側は固定速度40にフォールバック |
 
 - 旋回中(`cross_data&0b00000011 != 0`)は最優先。次に、走行スティックの絶対値が閾値(20)を超えていれば通常並進、それ以外は停止命令(`0b00110000`)。
-- **Lidar位置補正**: `/circle_center`(`geometry_msgs/msg/PointStamped`)を受信するたびに`0b00110001`を送信する経路だが、現状Lidarの精度が低いため常時自動発火ではなく**RT(`bt_data`のbit7)を押している間だけ**発火するようゲートされている（`lider_callback()`冒頭で`bt_data`のbit7を確認し、立っていなければ即return）。本コントローラのUI側は`lidar_correct` idをホールド中`BUTTON_PULSE_S`(0.15s)より短い間隔で連打し、`bt_data`のbit7を継続的に1に保つことでホールド操作を実現する。
+- **Lidar位置補正**: `/circle_center`(`geometry_msgs/msg/PointStamped`)を受信するたびに`0b00110001`を送信する経路。現状Lidarの精度が低いため常時自動発火ではなく**RT(ボタン)を押している間だけ**発火するようゲートされているが、そのゲートは`can_node.cpp`側ではなく`lider_scan_node.cpp`側（`will_pub`フラグ＋`scan_callback`内でのpublish）に実装されている。本コントローラのUI側は`lidar_correct` idをホールド中`BUTTON_PULSE_S`(0.15s)より短い間隔で連打し続けることでホールド操作を実現する。`can_node.cpp`の`lider_callback()`はCANを直接送信せず値を保存してフラグを立てるだけで、実際の送信は`can_thread()`側（下記1-1の備考参照）で行う。
+
+### 1-1. 直進補正PIDゲイン設定（`MOTORDRIVER4_RUN` 宛、4byte）
+
+スマホ側`/robot/pid_gain`（`std_msgs/msg/Float32MultiArray`、data=[gain_index, value]）を`can_node.cpp`の`gain_callback()`が受ける。STM32側は受信したゲインをRAM上の変数に反映するのみで、電源を切るとheading_kp等の初期値に戻る。
+
+**送信スレッドについて**: `can_T()`は共有バッファとSPIバスを直接触るため、複数スレッドから同時に呼ぶと壊れる。`gain_callback()`・`lider_callback()`はどちらもROS2のsubscriptionコールバック(専用ワーカースレッド`can_thread()`とは別スレッドで動く)なので、CANを直接送信せず値を保存してフラグ(`gain_pending_`/`lider_pending_`)を立てるだけにしてある。実際の送信は`can_thread()`のループが毎周期このフラグを見て、自分のスレッドの中で行う。`can_T()`を呼ぶのは`can_thread()`だけ、という制約はこの理由による。
+
+| byte | 内容 |
+|---|---|
+| `can_send_data[0]` | `0b01000000`固定 |
+| `can_send_data[1]` | gain_index。`0`=Kp `1`=Ki `2`=Kd `3`=補正上限(CORR_MAX) `4`=符号(SIGN) |
+| `can_send_data[2..3]` | 値を100倍してint16化したもの(big-endian、`(can_read_data[2]<<8)\|can_read_data[3]`) |
+
+STM32側は`heading_kp`/`heading_ki`/`heading_kd`/`heading_corr_max`/`heading_corr_sign`（`f446re_motor_run/Core/Src/main.c`）を書き換える。`HEADING_I_MAX`(積分項の飽和)は調整対象外の固定値のまま。
 
 ## 2. アーム/ベル直（送信→完了返信のハンドシェイク方式）
 
@@ -95,3 +109,5 @@ bit 40-47 : 旋回速度の大きさ0〜100（`/joy`のaxes[7]由来。1節の�
 - **改訂2（本書）**: 基本の操縦経路は`pscon_node`/`can_node`（Xbox系パッド配置、A B X Y LB RB LT）であることが判明したため、本書をそちらの実装内容を主として書き直した。射出(`launch`,Y)・手動位置調整(`manual_adjust`,RB)は実装済みと判明したため実装済みに変更。旧`arm_stow`(△/アーム収納)・`gate`(R1/城門設置高さ)・`launch_to_intake`(L1/ベル直設置→回収)・`checkpoint`(R2/関所設置高さ)のidは`can_node.cpp`側の実際の割り当てと一致しなくなっていたため廃止し、`launch`/`arm_force_stop`/`manual_adjust`/十字キー4方向(`dpad_up`/`dpad_right`/`dpad_left`/`dpad_down`)に置き換えた。当初「`ps4con_node`/`can_ps4_node`は型不一致で機能していない」と誤って記載したが、これは誤り（`ps4con_node`→`can_ps4_node`は`UInt32`同士で型は一致しており動く）。実PS4パッド直挿し時の意図的なバックアップ経路として2-3に別記した。
 - **改訂3**: Lidar位置補正（§1）をRT(`lidar_correct`)によるホールド式ゲートに変更。現状Lidarの精度が低く常時自動発火では困るため、押している間だけ有効にする仕様にした。ゲート自体は`torobo2026_ros2_rp/lider_scan_node`側（`will_pub`フラグ＋`scan_callback`内でのpublish、keijiさん実装）に実装済み。`can_node.hpp`の`lider_callback`宣言が誤って関数定義（`{`）になっており以降のprivateメンバ変数群が関数本体に取り込まれてしまっていた不具合も別途修正済み（同じくmainに反映済み）。
 - **改訂4**: 旋回速度を可変にした。従来`axes[6]`は旋回方向の符号(-1/0/1)のみで大きさを運べず、画面の速度2段階トグルを低速にしても実際の旋回速度（STM32側`spin_manu_add(±40)`固定）は変わらなかった。`axes[7]`に旋回速度の大きさ(0.0〜1.0)を追加し、`pscon_node`(`pscon_data`のbit40-47)→`can_node`(`turn_speed_data`、CANの`can_send_data[2]`)→STM32(`spin_manu_add(±turn_speed)`)まで伝播するようにした。大きさ0(未対応の旧実装からの受信を含む)の場合はSTM32側で従来の固定速度40にフォールバックする。
+- **改訂5**: 直進補正PID(`heading_kp`/`heading_ki`/`heading_kd`/`heading_corr_max`/`heading_corr_sign`)をスマホから実行中に調整できるようにした(§1-1)。従来`#define`だったこれらの定数をSTM32側で`float`変数に変更し、`/robot/pid_gain`→`can_node.cpp`の`gain_callback()`→CAN(`0b01000000`、4byte)で書き換えられるようにした。RAMのみの反映で電源を切ると初期値に戻る。あわせて、Lidar位置補正のRTホールドゲートが実際は`can_node.cpp`ではなく`lider_scan_node.cpp`側にある、という§1の誤記を訂正した。
+- **改訂6**: `gain_callback()`/`lider_callback()`が`can_thread()`とは別スレッド(ROS2のsubscriptionコールバック)から直接`can_T()`を呼んでおり、複数スレッドから同時にCAN送信されうる状態だったのを修正。両コールバックはCANを直接送信せず値を保存してフラグを立てるだけにし、実際の送信は`can_thread()`のループ側で行うようにした(§1-1参照)。

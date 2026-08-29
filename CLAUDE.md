@@ -22,6 +22,7 @@
 | `/robot/goal` | `geometry_msgs/msg/PoseStamped` | 端末→機体 | 移動コマンドB。フィールドマップの自陣拡大表示をタップした地点（`frame_id='map'`, pose座標系, m）。受信で`nav_node`がgo-to-point走行をアクティブ化する。運動学は未実装（`nav_node.py`のTODO）。 |
 | `/robot/goal_cancel` | `std_msgs/msg/Bool` | 端末→機体 | `/robot/goal`によるgo-to-point走行のキャンセル。「移動キャンセル」ボタン、またはスティック入力再開時（手動優先）に送出。 |
 | `/robot/nav_state` | `std_msgs/msg/String` | 機体→端末 | `nav_node`の走行モード。`manual` / `auto`。端末のモード表示に反映。 |
+| `/robot/pid_gain` | `std_msgs/msg/Float32MultiArray` | 端末→機体 | 直進補正PIDゲインの調整。data=`[gain_index, value]`（0=Kp 1=Ki 2=Kd 3=補正上限 4=符号）。`torobo2026_ros2_rp`の`can_node.cpp`が直接購読しCAN経由でSTM32(`f446re_motor_run`)へ即転送する（他のトピックのように`cmd_vel_to_joy.py`は経由しない）。RAMのみの反映で、STM32の電源を切ると`main.c`の初期値に戻る。詳細は`firmware/CAN_COMMAND_SPEC.md`参照。 |
 
 `/robot/telemetry` の任意フィールド:
 - `pose`: `{x, y, theta}`。x, y は m、theta は rad。位置推定（自己位置）。省略可で、無くても他の表示（vbat/state/wheels等）に影響しない。**`web/robot-console.html` 実装済み**（テレメトリ上部の位置表示欄）。
