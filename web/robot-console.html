@@ -83,7 +83,11 @@
 
   /* ブランドロゴは常に非表示（旧: 横画面のみ非表示だったが、縦画面でも出さない） */
   #brandWrap{display:none}
-  #usageImg{width:45%;display:block;margin:0 auto;border-radius:8px}
+  #usageImg{width:45%;display:block;margin:0 auto;border-radius:8px;cursor:zoom-in}
+  /* コントローラ操作画像の全画面拡大。画像・背景どこをタップしても閉じる */
+  #usageZoom{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+    padding:16px;background:rgba(6,10,12,.94);cursor:zoom-out}
+  #usageZoom img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px}
 
   .hint{font-size:11px;color:var(--muted);text-align:center}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -290,6 +294,10 @@
 <div id="taskActionBar">
   <button id="taskExec">✓ 実行</button>
   <button id="taskAdvance">次へ →</button>
+</div>
+
+<div id="usageZoom" hidden>
+  <img src="./con_image.jpg" alt="コントローラ操作説明（拡大）">
 </div>
 
 <script>
@@ -735,6 +743,12 @@ function drawCircleF(ctx,tr,cx,cy,r,opt={}){
 }
 let trailOn=true;
 $('#trailToggle').onchange=()=>{ trailOn=$('#trailToggle').checked; drawField(); };
+
+// コントローラ操作画像: タップで全画面拡大、もう一度タップ(画像/背景/Esc)で戻す
+const usageZoom=$('#usageZoom');
+$('#usageImg').onclick=()=>{ usageZoom.hidden=false; };
+usageZoom.onclick=()=>{ usageZoom.hidden=true; };
+addEventListener('keydown',e=>{ if(e.key==='Escape') usageZoom.hidden=true; });
 function setTeam(team){
   // チーム切り替え前に進行中の移動・経由地チェーンを破棄する(切り替え後の座標変換で
   // 積み残しの経由地を送ると、意図しない位置に機体が向かってしまうため)
