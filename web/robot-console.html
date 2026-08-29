@@ -335,7 +335,7 @@ const CFG = {
     // 動作)が変わってもここは変更しない。id名だけ実態に合わせて更新した。
     buttons: {
       arm_start:2, intake:1, launch:3, release_suction:0,
-      arm_force_stop:4, manual_adjust:5, descend_adjust:6,
+      arm_force_stop:4, manual_adjust:5, descend_adjust:6, lidar_correct:7,
     },
     // 追加: 十字キー（Gamepad API標準マッピングの buttons[12..15]）
     dpad: {
@@ -531,11 +531,17 @@ function pollGamepad(){
     gpadActive=true;
     const fx=axisVal(gp,AX.forward), fy=axisVal(gp,AX.strafe), rz=axisVal(gp,AX.rotate);
     drive.x=fx; drive.y=fy; drive.wz=rz;
-    // 全機構コマンド（エッジ）。画面ボタンとパッドの両方から同じsendCommand()を呼ぶ。
+    // 全機構コマンド。画面ボタンとパッドの両方から同じsendCommand()を呼ぶ。
+    // hold:true(Lidar補正)は押されている間、この関数の呼び出し周期(50ms、送出ループ参照)ごとに
+    // 連打し続けることでホールドを維持する。BUTTON_PULSE_S(0.15s)より十分短いので途切れない。
+    // それ以外は従来通りエッジ検出(押した瞬間の1回だけ)。
     CFG.commands.forEach(c=>{
       const idx=BTN[c.id]; if(idx==null) return;
       const b=gp.buttons[idx]; if(!b) return;
-      if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
+      if(c.hold){
+        if(b.pressed) sendCommand(c.id);
+      }
+      else if(b.pressed && !btnHeld[c.id]){ btnHeld[c.id]=true; sendCommand(c.id); }
       else if(!b.pressed){ btnHeld[c.id]=false; }
     });
     // 追加: 十字キー（エッジ・パルス送出、既存ボタンと同じ仕組み）
