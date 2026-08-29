@@ -14,7 +14,7 @@
 |---|---|
 | `can_send_data[0]` | モード種別。`0b11110000`=通常（並進）、`0b11110001`=旋回中、`0b00110001`=Lidar位置補正 |
 | `can_send_data[1]` | 通常時: y値（前後、st_ry由来）／旋回時: 旋回方向ビット(`cross_data`の下位2bit) |
-| `can_send_data[2]` | 通常時のみ: x値（左右、st_rx由来） |
+| `can_send_data[2]` | 通常時: x値（左右、st_rx由来）／旋回時: 旋回速度の大きさ0〜100(`turn_speed_data`由来)。0(未対応の旧実装からの受信を含む)の場合、STM32側は固定速度40にフォールバック |
 
 - 旋回中(`cross_data&0b00000011 != 0`)は最優先。次に、走行スティックの絶対値が閾値(20)を超えていれば通常並進、それ以外は停止命令(`0b00110000`)。
 - **Lidar位置補正**: `/circle_center`(`geometry_msgs/msg/PointStamped`)を受信するたびに`0b00110001`を送信する経路だが、現状Lidarの精度が低いため常時自動発火ではなく**RT(`bt_data`のbit7)を押している間だけ**発火するようゲートされている（`lider_callback()`冒頭で`bt_data`のbit7を確認し、立っていなければ即return）。本コントローラのUI側は`lidar_correct` idをホールド中`BUTTON_PULSE_S`(0.15s)より短い間隔で連打し、`bt_data`のbit7を継続的に1に保つことでホールド操作を実現する。
@@ -79,9 +79,10 @@ bit 13    : cross_bt[2] (十字キー左 dpad_left)
 bit 14    : cross_bt[1] (十字キー右 dpad_right)
 bit 15    : cross_bt[0] (十字キー上 dpad_up)
 bit 32-39 : sequence_data（`/sequence`由来。本書の対象外）
+bit 40-47 : 旋回速度の大きさ0〜100（`/joy`のaxes[7]由来。1節の旋回速度に反映）
 ```
 
-- `can_node`側は`bt_data = ps_data & 0xFF`（bit0-7そのまま）、`cross_data = (ps_data>>8) & 0xFF`（bit8-15を1byteとして読む。結果、十字キーは`cross_data`のbit4-7に現れる）として受け取る。
+- `can_node`側は`bt_data = ps_data & 0xFF`（bit0-7そのまま）、`cross_data = (ps_data>>8) & 0xFF`（bit8-15を1byteとして読む。結果、十字キーは`cross_data`のbit4-7に現れる）、`turn_speed_data = (ps_data>>40) & 0xFF`として受け取る。
 
 ## 4. 射出（ベル直）— 実装済み
 
@@ -92,4 +93,5 @@ bit 32-39 : sequence_data（`/sequence`由来。本書の対象外）
 - 初版: `/robot/command` の id を実機経路（`launch`/`intake`/`checkpoint`/`gate`）に合わせた際に作成。当時想定していたビット単位の仮想プロトコルは実装されなかった。
 - 改訂1: 当時稼働していた`ps4con_node`/`can_ps4_node`の実プロトコルに合わせて全面改訂。「PS4パッドの8ボタンそれぞれに1つの動作コードを割り当て、送信→完了返信のハンドシェイクで多重発射を防ぐ」方式と記載。射出・手動ジョグは実プロトコル・STM32ファーム双方で未実装として対象外と明記。
 - **改訂2（本書）**: 基本の操縦経路は`pscon_node`/`can_node`（Xbox系パッド配置、A B X Y LB RB LT）であることが判明したため、本書をそちらの実装内容を主として書き直した。射出(`launch`,Y)・手動位置調整(`manual_adjust`,RB)は実装済みと判明したため実装済みに変更。旧`arm_stow`(△/アーム収納)・`gate`(R1/城門設置高さ)・`launch_to_intake`(L1/ベル直設置→回収)・`checkpoint`(R2/関所設置高さ)のidは`can_node.cpp`側の実際の割り当てと一致しなくなっていたため廃止し、`launch`/`arm_force_stop`/`manual_adjust`/十字キー4方向(`dpad_up`/`dpad_right`/`dpad_left`/`dpad_down`)に置き換えた。当初「`ps4con_node`/`can_ps4_node`は型不一致で機能していない」と誤って記載したが、これは誤り（`ps4con_node`→`can_ps4_node`は`UInt32`同士で型は一致しており動く）。実PS4パッド直挿し時の意図的なバックアップ経路として2-3に別記した。
-- **改訂3**: Lidar位置補正（§1）をRT(`lidar_correct`)によるホールド式ゲートに変更。現状Lidarの精度が低く常時自動発火では困るため、押している間だけ有効にする仕様に修正した。あわせて`torobo2026_ros2_rp/can_node.hpp`の`lider_callback`宣言が誤って関数定義（`{`)になっており、以降のprivateメンバ変数群がその関数本体に取り込まれてしまっていた不具合（おそらくコメントアウト解除時の記述ミス）を修正し、`lider_callback`の引数型もヘッダ・実装とも`geometry_msgs::msg::PointStamped::SharedPtr`に統一した（従来は`std_msgs::msg::UInt64::SharedPtr`のままで`msg->point.x`にアクセスしており、型が合っていなかった）。
+- **改訂3**: Lidar位置補正（§1）をRT(`lidar_correct`)によるホールド式ゲートに変更。現状Lidarの精度が低く常時自動発火では困るため、押している間だけ有効にする仕様にした。ゲート自体は`torobo2026_ros2_rp/lider_scan_node`側（`will_pub`フラグ＋`scan_callback`内でのpublish、keijiさん実装）に実装済み。`can_node.hpp`の`lider_callback`宣言が誤って関数定義（`{`）になっており以降のprivateメンバ変数群が関数本体に取り込まれてしまっていた不具合も別途修正済み（同じくmainに反映済み）。
+- **改訂4**: 旋回速度を可変にした。従来`axes[6]`は旋回方向の符号(-1/0/1)のみで大きさを運べず、画面の速度2段階トグルを低速にしても実際の旋回速度（STM32側`spin_manu_add(±40)`固定）は変わらなかった。`axes[7]`に旋回速度の大きさ(0.0〜1.0)を追加し、`pscon_node`(`pscon_data`のbit40-47)→`can_node`(`turn_speed_data`、CANの`can_send_data[2]`)→STM32(`spin_manu_add(±turn_speed)`)まで伝播するようにした。大きさ0(未対応の旧実装からの受信を含む)の場合はSTM32側で従来の固定速度40にフォールバックする。

@@ -966,7 +966,7 @@ setInterval(()=>{
     clearGoal(); sendGoalCancel();
   }
   const v = drive;
-  const sc = SPEED_LEVELS[speedLevel].scale;     // 速度3段階トグル
+  const sc = SPEED_LEVELS[speedLevel].scale;     // 速度2段階トグル
   const rv = driveReversed ? -1 : 1;             // 足回り逆転トグル（前後・左右のみ反転。旋回向きはそのまま）
   if(connected && !demo() && cmdVel){
     cmdVel.publish(new ROSLIB.Message({
