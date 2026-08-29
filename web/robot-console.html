@@ -16,6 +16,9 @@
     --sans:system-ui,-apple-system,"Helvetica Neue",sans-serif;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* #page1/#page2それぞれがdisplay:grid等を明示指定しているため、hidden属性の既定display:noneが
+     打ち消されてしまう。!importantで確実にhidden側を勝たせる */
+  [hidden]{display:none!important}
   html,body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--sans);
     overscroll-behavior:none;touch-action:manipulation;height:100%}
   /* body = ヘッダー無し / スクロール領域 のflex。position:fixedは使わず、
@@ -117,15 +120,58 @@
      端末を横持ちした際に左右の端に近い位置で親指が届くよう、実行=左寄り小さめ／次へ=右寄り大きめに分ける */
   #taskActionBar{flex:0 0 auto;display:grid;grid-template-columns:1fr 1.5fr;gap:10px;
     padding-bottom:max(0px,env(safe-area-inset-bottom))}
-  #taskExec{padding:20px 10px;font-size:16px;font-weight:800;letter-spacing:.02em;border:none;border-radius:14px;
+  #taskExec{padding:12px 10px;font-size:14px;font-weight:800;letter-spacing:.02em;border:none;border-radius:12px;
     background:linear-gradient(180deg,#4bcaa8,var(--ok));color:#04211b;
     box-shadow:0 8px 18px -8px rgba(63,184,154,.6)}
   #taskExec:active{box-shadow:0 3px 10px -6px rgba(63,184,154,.55);transform:translateY(1px)}
-  #taskAdvance{padding:20px 10px;font-size:19px;font-weight:800;border-radius:14px;
+  #taskAdvance{padding:12px 10px;font-size:15px;font-weight:800;border-radius:12px;
     background:linear-gradient(180deg,#ffc267,var(--warn));color:#3a2400;border:none;
     box-shadow:0 8px 20px -8px rgba(239,162,58,.65)}
   #taskAdvance:active{box-shadow:0 3px 10px -6px rgba(239,162,58,.6);transform:translateY(1px)}
   #taskAdvance:disabled{opacity:.3;cursor:default;box-shadow:none}
+
+  /* ページ切り替えタブ（① タスク／② 操縦）。物理コントローラが無くても②だけで一通り操縦できるようにする */
+  #pageSwitch{gap:8px}
+  .pagetab{flex:1;padding:10px;font-size:13px;font-weight:700;border-radius:10px;opacity:.55}
+  .pagetab.active{opacity:1;color:#fff;background:var(--warn);border-color:var(--warn)}
+
+  /* ②操縦ページ: 機構コマンドボタン。スティックは物理パッド専用のためここには置かない。
+     ボタンは意味のまとまり・使用頻度で4グループに分け、常に同じ場所・同じ大きさで固定表示する
+     （手が場所を覚えられるように）。足回り/アーム/配置はいずれも2x2グリッドで統一し、大きさを揃える:
+       足回り(速度低/高・逆転・位置調整) = 走行系。2x2で他グループと同じ大きさ。
+       アーム(リセット/回収/降下/放す)    = 毎回連続で多用。一番大きく最優先の位置。
+       配置(ベル直設置/置き場/城門/関所)  = アームの位置調整の一種。アームの隣、足回り・アームと同格の大きさ。
+       ベル直(射出のみ)                  = ここぞの場面で少数回。1マス分、端に独立配置。
+     アームストップは誤タップ防止のためここには出さない（物理パッドのLBのみ）。 */
+  #page2{min-height:0;display:flex;flex-direction:column}
+  #cmdPanel{min-height:0;flex:1;display:flex;flex-direction:column;gap:14px}
+  .cmdSection{display:flex;flex-direction:column;min-height:0;gap:6px}
+  .cmdSecLbl{margin-bottom:0}
+  .cmdGrid{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:8px;flex:1;min-height:0}
+  .cmdBtn{font-weight:800;border-radius:12px;border:none;text-align:center;line-height:1.3;font-size:16px;min-height:60px}
+  .cmdBtn:active{filter:brightness(.85);transform:translateY(1px)}
+  .cmdBtn.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
+  .cmdIcon{display:block;font-size:1.2em;line-height:1;margin-bottom:2px}
+  .armGrid .cmdBtn{font-size:18px;font-weight:900;min-height:76px}
+  .bellGrid{grid-template-columns:1fr;grid-template-rows:repeat(2,1fr)}
+  .bellGrid .cmdBtn{font-size:16px;min-height:60px}
+  @media (orientation:landscape){
+    /* 縦2:横5程度の横向きスマホ画面にスクロール無しで収まるよう、4グループを横並びにする。
+       親指の届く大きめタップ領域を優先しつつ、アームは横幅を広めに取って最優先扱い。
+       配置(dpad)はアームの位置調整の一種なので区切り線を挟まずアームの隣に置く */
+    #cmdPanel{flex-direction:row;padding:6px 8px;gap:0}
+    .cmdSection{gap:4px}
+    .cmdSecLbl{margin-bottom:2px!important;font-size:10px}
+    #cmdSecDrive{flex:1.2;min-width:0;padding-right:8px}
+    #cmdSecArm{flex:1.7;min-width:0;padding:0 8px;border-left:1px solid var(--line)}
+    #cmdSecDpad{flex:1.2;min-width:0;padding:0 8px}
+    #cmdSecBell{flex:0.8;min-width:0;padding-left:8px;border-left:1px solid var(--line)}
+    .cmdGrid{gap:6px}
+    .cmdBtn{font-size:13px;min-height:0}
+    .armGrid .cmdBtn{font-size:14px}
+    .bellGrid .cmdBtn{font-size:12px}
+    .dpadGrid .cmdIcon{font-size:1em}
+  }
 </style>
 </head>
 <body>
@@ -140,7 +186,12 @@
   <label class="switch"><input type="checkbox" id="demo" checked>デモ</label>
 </div>
 
-<div class="layout">
+<div class="row" id="pageSwitch">
+  <button id="pageTab1" class="pagetab active">① タスク</button>
+  <button id="pageTab2" class="pagetab">② 操縦</button>
+</div>
+
+<div class="layout" id="page1">
   <div class="top">
     <div id="taskPanel" class="panel">
       <div class="lbl" style="margin-bottom:6px">タスク管理</div>
@@ -193,6 +244,27 @@
     </div>
   </div>
 </div>
+
+<div class="layout" id="page2" hidden>
+  <div class="panel" id="cmdPanel">
+    <div class="cmdSection" id="cmdSecDrive">
+      <div class="lbl cmdSecLbl">足回り</div>
+      <div class="cmdGrid driveGrid" id="cmdGridDrive"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecArm">
+      <div class="lbl cmdSecLbl">アーム</div>
+      <div class="cmdGrid armGrid" id="cmdGridArm"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecDpad">
+      <div class="lbl cmdSecLbl">配置</div>
+      <div class="cmdGrid dpadGrid" id="cmdGridDpad"></div>
+    </div>
+    <div class="cmdSection" id="cmdSecBell">
+      <div class="lbl cmdSecLbl">ベル直</div>
+      <div class="cmdGrid bellGrid" id="cmdGridBell"></div>
+    </div>
+  </div>
+</div>
 </div><!-- /#scrollarea -->
 
 <div id="taskActionBar">
@@ -212,18 +284,38 @@ const CFG = {
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
-  // 全機構コマンド（画面・常時表示・エッジ）。実PS4パッドのボタン配置（×○△□L1 R1 L2 R2）に1:1で
-  // 対応させ、can_ps4_node.cpp（torobo2026_ros2_rp、変更対象外）が解釈する定型アーム動作と一致させる。
-  // 射出・手動ジョグ・吸着トグルは実PS4パイプライン側に未実装のため今回のUIには含めない。
+  // 全機構コマンド（実Xbox系パッドのボタン配置A B X Y LB RB LTに1:1で対応させ、can_node.cpp
+  // （torobo2026_ros2_rp、変更対象外）が解釈する定型アーム動作と一致させる）。
+  // 旧id/ラベルはcan_ps4_node.cpp(実PS4パッド直挿し時のバックアップ経路用)のボタン配置に引きずられて
+  // 実態と乖離していたため、基本経路のcan_node.cpp側のコメント通りに全面的に修正した(2026/8時点)。
+  // 十字キー4方向(dpad_*)もcan_node.cppのcross_data判定に対応済みのため、機構コマンドとして併記する。
+  //
+  // group: ②操縦ページでのボタンの意味のまとまり。使用頻度に応じて見た目のサイズ・強調度を変える。
+  //   drive = 足回り関連（速度2段階/逆転/Lidar位置補正ホールド）。
+  //   arm   = 毎回連続で多用するアーム基本動作（降下/回収/リセット/放す）。一番大きく、常に同じ位置。
+  //   bell  = ここぞという場面で少数回のベル直操作（射出・位置調整）。中サイズ、目立つ色。
+  //   dpad  = 特定の場面のみ使う配置プリセット（ベル直設置/置き場/城門/関所）。小さめ、矢印アイコン付き。
+  // screen: false のものは誤タップ防止のため②操縦ページには表示しない
+  //   （物理パッドのボタンからは引き続き使える。pollGamepad()はCFG.commands全体を見るため影響なし）。
+  //   - arm_force_stop(LB): 緊急時のみ・押し間違えたくないとのことなので非表示
+  // hold: true のもの（Lidar位置補正）は押している間だけ有効(ホールド)。現状Lidarの精度が低いため
+  //   常時自動発火ではなくボタンでゲートする仕様（can_node.cppのlider_callback()参照）。
+  //   押している間、BUTTON_PULSE_S(0.15s)より短い間隔でsendCommand()を連打してパルスを継続更新する。
+  // 備考: 「Lidar位置補正」（回収時に足回りを微調整するもの、/circle_centerトリガー）と、
+  // manual_adjust(RB、ベル直位置調整)は別物。以前混同していたが、manual_adjustは実際にベル直側の機能。
   commands: [
-    {id:'arm_start',        label:'スタート初期移動',    color:'#4d459b', colorFg:'#f2f0fa'}, // □
-    {id:'intake',           label:'回収',                color:'#4a90d9', colorFg:'#052033'}, // 〇
-    {id:'arm_stow',         label:'アーム収納',          color:'#8a969c', colorFg:'#101a1f'}, // △
-    {id:'release_suction',  label:'吸引切る(設置)',      color:'#d9714a', colorFg:'#2a0f04'}, // ×
-    {id:'launch_to_intake', label:'ベル直設置→回収',    color:'#c76b98', colorFg:'#2a0f1c'}, // L1
-    {id:'gate',             label:'城門設置高さ',        color:'#efa23a', colorFg:'#3a2400'}, // R1
-    {id:'descend_adjust',   label:'降下微調整',          color:'#7c8d96', colorFg:'#10181c'}, // L2
-    {id:'checkpoint',       label:'関所設置高さ',        color:'#3fb89a', colorFg:'#04211b'}, // R2
+    {id:'descend_adjust',  label:'降下',     color:'#4d459b', colorFg:'#f2f0fa', group:'arm'},  // LT: 降下微調整
+    {id:'intake',          label:'回収',     color:'#4a90d9', colorFg:'#052033', group:'arm'},  // B
+    {id:'arm_start',       label:'リセット', color:'#7c8d96', colorFg:'#10181c', group:'arm'},  // X: 初期
+    {id:'release_suction', label:'放す',     color:'#d9714a', colorFg:'#2a0f04', group:'arm'},  // A: 吸引切る(設置)
+    {id:'launch',          label:'射出',     color:'#efa23a', colorFg:'#3a2400', group:'bell'}, // Y
+    {id:'manual_adjust',   label:'位置調整', color:'#8a969c', colorFg:'#101a1f', group:'bell'}, // RB: 手動位置調整(ベル直位置調整)
+    {id:'lidar_correct',   label:'Lidar補正', color:'#4a90d9', colorFg:'#052033', group:'drive', hold:true}, // RT: ホールド中のみ有効
+    {id:'arm_force_stop',  label:'アームストップ', color:'#c76b98', colorFg:'#2a0f1c', screen:false}, // LB
+    {id:'dpad_up',    label:'ベル直設置', icon:'▲', color:'#3fb89a', colorFg:'#04211b', group:'dpad'},
+    {id:'dpad_right', label:'置き場',     icon:'▶', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 2個めボール置き場
+    {id:'dpad_left',  label:'城門',       icon:'◀', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 城門設置高さ
+    {id:'dpad_down',  label:'関所',       icon:'▼', color:'#3fb89a', colorFg:'#04211b', group:'dpad'}, // 関所設置高さ
   ],
   // ---- Bluetoothゲームパッド関連（X5 Lite, Switchモードで採取・確定済み）----
   //   axes: [0]左スティックx [1]左スティックy [2]右スティックx [3]右スティックy
@@ -239,9 +331,11 @@ const CFG = {
       rotate:  {index: 2, invert: true},    // drive.wz（旋回）＝右スティックx
     },
     // buttons: CFG.commands の id → ボタン番号（エッジ）。画面ボタンと両方から操作できる。
+    // インデックス自体はX5 Lite実機で採取・確定済みの値なので、idの対応先(can_node.cpp側の実際の
+    // 動作)が変わってもここは変更しない。id名だけ実態に合わせて更新した。
     buttons: {
-      arm_start:2, intake:1, arm_stow:3, release_suction:0,
-      launch_to_intake:4, gate:5, descend_adjust:6, checkpoint:7,
+      arm_start:2, intake:1, launch:3, release_suction:0,
+      arm_force_stop:4, manual_adjust:5, descend_adjust:6,
     },
     // 追加: 十字キー（Gamepad API標準マッピングの buttons[12..15]）
     dpad: {
@@ -421,7 +515,7 @@ $('#taskExec').onclick=()=>{
 };
 renderTask();
 
-// ===== Gamepad（Bluetooth接続の物理コントローラ。外部コントローラ専用のためタッチ入力は無し）=====
+// ===== Gamepad（Bluetooth接続の物理コントローラ。②操縦ページのタッチ操作と併用可）=====
 let gpadActive=false;
 let deadzone=CFG.gamepad.deadzone;
 const AX=CFG.gamepad.axes, BTN=CFG.gamepad.buttons, DPAD=CFG.gamepad.dpad;  // DPADを追加
@@ -457,6 +551,71 @@ function pollGamepad(){
 addEventListener('gamepadconnected',pollGamepad);
 addEventListener('gamepaddisconnected',()=>{
   gpadActive=false; drive={x:0,y:0,wz:0};
+});
+
+// ===== ページ切り替え（①タスク管理／②操縦。物理コントローラが無くても②だけで操縦できるようにする）=====
+function showPage(n){
+  $('#page1').hidden = n!==1;
+  $('#page2').hidden = n!==2;
+  $('#pageTab1').classList.toggle('active', n===1);
+  $('#pageTab2').classList.toggle('active', n===2);
+  $('#taskActionBar').style.display = n===1 ? '' : 'none';   // 実行/次へは①のタスク専用
+}
+$('#pageTab1').onclick=()=>showPage(1);
+$('#pageTab2').onclick=()=>showPage(2);
+showPage(1);
+
+// ===== 速度2段階・足回り逆転トグル（②操縦ページ。パッド操作にも共通で効く。送出ループで適用）=====
+// driveGrid内で位置調整ボタン(CFG.commandsのgroup:'drive')と2x2で揃うよう、
+// 先にこの2つを追加してから下のCFG.commandsループで残り(位置調整)を追加する（DOM順=表示順）。
+// 倍率は仮置き。実機で走らせながら調整する。
+const SPEED_LEVELS = [
+  {label:'低速', scale:0.5},
+  {label:'高速', scale:1.0},
+];
+let speedLevel=1, driveReversed=false;   // 起動時は高速(等速)から
+const driveGridBox=$('#cmdGridDrive');
+SPEED_LEVELS.forEach((s,i)=>{
+  const b=document.createElement('button'); b.type='button'; b.className='cmdBtn speedBtn';
+  b.textContent=s.label;
+  b.onclick=()=>{ speedLevel=i; renderSpeedButtons(); };
+  driveGridBox.appendChild(b);
+});
+function renderSpeedButtons(){
+  $$('#cmdGridDrive .speedBtn').forEach((b,i)=>b.classList.toggle('on', i===speedLevel));
+}
+renderSpeedButtons();
+const reverseBtn=document.createElement('button');
+reverseBtn.type='button'; reverseBtn.id='reverseToggle'; reverseBtn.className='cmdBtn';
+reverseBtn.textContent='逆転';
+reverseBtn.onclick=()=>{
+  driveReversed=!driveReversed;
+  reverseBtn.classList.toggle('on', driveReversed);
+};
+driveGridBox.appendChild(reverseBtn);
+
+// ===== 機構コマンドボタン（②操縦ページ。CFG.commandsのgroupごとに分けて描画し、意味のまとまり・
+// 使用頻度に応じたサイズで表示する。パッドと同じsendCommand()を呼ぶので実際の動作は共通。
+// screen:false のもの（アームストップ）は誤タップ防止のため描画しない（物理パッドのLBからは引き続き使える）。
+// hold:true のもの（Lidar補正）は押している間だけBUTTON_PULSE_S(0.15s)より短い間隔で連打し続け、
+// 離すと自然にパルスが切れてcan_node.cpp側のホールド判定がOFFに戻る仕組み =====
+const HOLD_REPEAT_MS = 80;
+function bindHoldButton(el, id){
+  let timer=null;
+  const start=(ev)=>{ if(timer) return; sendCommand(id); timer=setInterval(()=>sendCommand(id), HOLD_REPEAT_MS); el.classList.add('on'); ev.preventDefault(); };
+  const stop=()=>{ if(timer){ clearInterval(timer); timer=null; } el.classList.remove('on'); };
+  el.addEventListener('pointerdown', start);
+  ['pointerup','pointercancel','pointerleave'].forEach(evt=>el.addEventListener(evt, stop));
+}
+const cmdGridBoxByGroup={drive:driveGridBox, arm:$('#cmdGridArm'), bell:$('#cmdGridBell'), dpad:$('#cmdGridDpad')};
+CFG.commands.forEach(c=>{
+  if(c.screen===false) return;
+  const box=cmdGridBoxByGroup[c.group]; if(!box) return;
+  const b=document.createElement('button'); b.type='button'; b.className='cmdBtn';
+  b.style.background=c.color; b.style.color=c.colorFg;
+  b.innerHTML = c.icon ? `<span class="cmdIcon">${c.icon}</span>${c.label}` : c.label;
+  if(c.hold){ bindHoldButton(b, c.id); } else { b.onclick=()=>sendCommand(c.id); }
+  box.appendChild(b);
 });
 
 // ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
@@ -807,10 +966,12 @@ setInterval(()=>{
     clearGoal(); sendGoalCancel();
   }
   const v = drive;
+  const sc = SPEED_LEVELS[speedLevel].scale;     // 速度3段階トグル
+  const rv = driveReversed ? -1 : 1;             // 足回り逆転トグル（前後・左右のみ反転。旋回向きはそのまま）
   if(connected && !demo() && cmdVel){
     cmdVel.publish(new ROSLIB.Message({
-      linear:{x:v.x*CFG.maxLin, y:v.y*CFG.maxLin, z:0},
-      angular:{x:0,y:0,z:v.wz*CFG.maxAng}
+      linear:{x:v.x*CFG.maxLin*sc*rv, y:v.y*CFG.maxLin*sc*rv, z:0},
+      angular:{x:0,y:0,z:v.wz*CFG.maxAng*sc}
     }));
     pubCount++;
   }
