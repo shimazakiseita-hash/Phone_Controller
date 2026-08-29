@@ -55,30 +55,19 @@
   @media (orientation:landscape){
     body{max-width:1400px}
     .layout{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
-    /* 縦方向の余裕が少ないので、.top内をさらに2列(テレメトリ/デバッグ列 と タスク管理列)に割って
-       縦の積み上げ量を減らす。ブランドロゴは装飾のみなので横画面では非表示にして高さを確保する。
+    /* タスク管理はフィールドマップ(.bottom、レイアウト右半分)と横幅を揃えるため.top全幅の専用行にする。
+       ブランドロゴは装飾のみなので横画面では非表示にして高さを確保する。
        align-items:stretchで.topを.bottom(フィールドマップ)と同じ高さまで伸ばし、
-       usageWrap(1fr行)は「位置」列・「タスク管理」列の下に両方の幅いっぱいで配置する */
-    .top{display:grid;grid-template-columns:1fr 1.2fr;grid-template-rows:auto auto auto 1fr;gap:4px 10px;min-height:0}
-    #tele{grid-column:1;grid-row:1}
-    #tele .stat{padding:4px 8px}
-    #tele .lbl{font-size:9px}
-    #tele #pose{font-size:12px!important}
-    #rateRow{grid-column:1;grid-row:2;margin:-6px 0}
-    #advPanel{grid-column:1;grid-row:3;align-self:start;padding:4px 10px}
-    #advPanel summary{font-size:11px}
-    #taskPanel{grid-column:2;grid-row:1/4}
-    #usageWrap{grid-column:1/3;grid-row:4;min-height:0;display:flex;align-items:center;justify-content:center;
+       usageWrap(1fr行)は最後に全幅で配置する */
+    .top{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:4px 10px;min-height:0}
+    #taskPanel{grid-column:1/3;grid-row:1}
+    #rateRow{grid-column:1/3;grid-row:2;justify-content:flex-end;margin:-6px 0}
+    #usageWrap{grid-column:1/3;grid-row:3;min-height:0;display:flex;align-items:center;justify-content:center;
       padding:0;border:none;background:transparent;overflow:hidden}
     #usageImg{width:auto;height:100%;max-height:100%;max-width:100%;object-fit:contain}
-    #brandWrap{display:none!important}   /* 103行目の基本スタイル(display:flex)がCSSの記述順で後勝ちするのを防ぐ */
+    #brandWrap{display:none!important}   /* 下の#brandWrap基本スタイル(display:flex)がCSSの記述順で後勝ちするのを防ぐ */
     #fieldCanvasBox{max-height:56vh}
   }
-
-  /* telemetry strip */
-  #tele{display:grid;grid-template-columns:1fr;gap:8px}
-  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
-  .stat .v{font-family:var(--mono);font-size:20px;line-height:1.1;margin-top:3px}
 
   /* フィールドマップ（常時表示。外部コントローラ専用のためタッチスティックは無し） */
   #fieldTop{justify-content:space-between;margin-bottom:8px}
@@ -90,16 +79,6 @@
   #fieldCanvasBox{position:relative;width:100%;aspect-ratio:12/5;max-height:64vh;
     background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   #fieldCanvasBox canvas{width:100%;height:100%;display:block}
-
-  /* 詳細設定／デバッグパネル（開閉式） */
-  #advPanel summary{cursor:pointer;font-size:13px;color:var(--muted);list-style:none}
-  #advPanel summary::-webkit-details-marker{display:none}
-  #advPanel summary::before{content:"▸ ";color:var(--muted)}
-  #advPanel[open] summary::before{content:"▾ "}
-  .advbody{margin-top:8px;display:flex;flex-direction:column;gap:4px}
-  input[type=range]{width:100%;accent-color:var(--warn)}
-  .dbglist{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
-    border-radius:8px;padding:6px 8px;line-height:1.6;word-break:break-all}
 
   /* ブランドロゴ（余ったスペースを埋める。画像は正方形JPGで円が縁いっぱいに内接しているので、
      clip-pathで四隅の白背景だけを落として円バッジとして見せる） */
@@ -163,10 +142,6 @@
 
 <div class="layout">
   <div class="top">
-    <div id="tele">
-      <div class="stat"><div class="lbl">位置 (x,y,θ)</div><div class="v mono" id="pose" style="font-size:14px">--</div></div>
-    </div>
-
     <div id="taskPanel" class="panel">
       <div class="lbl" style="margin-bottom:6px">タスク管理</div>
       <div class="row" id="taskCarousel">
@@ -183,22 +158,6 @@
     <div class="row" id="rateRow" style="justify-content:flex-end">
       <span class="pill mono" id="rate">0 Hz</span>
     </div>
-
-    <details id="advPanel" class="panel">
-      <summary>詳細設定 / デバッグ</summary>
-      <div class="advbody">
-        <div class="row" style="justify-content:space-between">
-          <span class="lbl">デッドゾーン</span>
-          <span class="mono" id="dzVal">0.08</span>
-        </div>
-        <input type="range" id="dzSlider" min="0" max="0.5" step="0.01" value="0.08">
-        <div class="hint" style="text-align:left">スティック中立付近の遊び幅。ドリフトがあれば上げる（実機には反映されない一時設定）。</div>
-        <div class="lbl" style="margin-top:6px">axes（生値）</div>
-        <div id="dbgAxes" class="mono dbglist">パッド未接続</div>
-        <div class="lbl" style="margin-top:6px">buttons（生値）</div>
-        <div id="dbgButtons" class="mono dbglist">パッド未接続</div>
-      </div>
-    </details>
 
     <div id="brandWrap">
       <img src="./CITRobocon_image.jpg" alt="CIT Robocon" id="brandLogo">
@@ -463,16 +422,11 @@ $('#taskExec').onclick=()=>{
 renderTask();
 
 // ===== Gamepad（Bluetooth接続の物理コントローラ。外部コントローラ専用のためタッチ入力は無し）=====
-let gpadActive=false, advOpen=false;
+let gpadActive=false;
 let deadzone=CFG.gamepad.deadzone;
 const AX=CFG.gamepad.axes, BTN=CFG.gamepad.buttons, DPAD=CFG.gamepad.dpad;  // DPADを追加
 const btnHeld={};
 const dpadHeld={};  // 追加
-
-$('#advPanel').addEventListener('toggle', ()=>{ advOpen=$('#advPanel').open; });
-const dzSlider=$('#dzSlider'), dzVal=$('#dzVal');
-dzSlider.value=deadzone; dzVal.textContent=deadzone.toFixed(2);
-dzSlider.oninput=()=>{ deadzone=parseFloat(dzSlider.value); dzVal.textContent=deadzone.toFixed(2); };
 
 function dz(v){ return Math.abs(v)<deadzone ? 0 : v; }
 function axisVal(gp,def){ const raw=dz(gp.axes[def.index]||0); return def.invert ? -raw : raw; }
@@ -496,19 +450,13 @@ function pollGamepad(){
       if(b.pressed && !dpadHeld[id]){ dpadHeld[id]=true; sendCommand(id); }
       else if(!b.pressed){ dpadHeld[id]=false; }
     });
-    if(advOpen){
-      $('#dbgAxes').textContent = gp.axes.map((v,i)=>`[${i}] ${v.toFixed(2)}`).join('  ');
-      $('#dbgButtons').textContent = gp.buttons.map((b,i)=>`[${i}] ${b.pressed?1:0}`).join(' ');
-    }
   }else if(gpadActive){
     gpadActive=false;
-    $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
   }
 }
 addEventListener('gamepadconnected',pollGamepad);
 addEventListener('gamepaddisconnected',()=>{
   gpadActive=false; drive={x:0,y:0,wz:0};
-  $('#dbgAxes').textContent='パッド未接続'; $('#dbgButtons').textContent='パッド未接続';
 });
 
 // ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
@@ -874,7 +822,6 @@ setInterval(()=>{ $('#rate').textContent=pubCount+' Hz'; pubCount=0; }, 1000);
 function applyTelem(t){
   if(t.pose!=null){
     const p=t.pose;                                       // x,y=m, theta=rad（CLAUDE.md契約）
-    $('#pose').textContent=`${Number(p.x).toFixed(2)}, ${Number(p.y).toFixed(2)}, ${(Number(p.theta)*180/Math.PI).toFixed(0)}°`;
     lastPose={x:Number(p.x), y:Number(p.y), theta:Number(p.theta)};
     poseHistory.push(lastPose);
     if(poseHistory.length>CFG.map.trailMax) poseHistory.shift();
