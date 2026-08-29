@@ -23,18 +23,26 @@ TURN_DEADZONE = 0.1
 DEADMAN_TIMEOUT_S = 0.2
 
 # /robot/command の command_id -> buttons index。
-# torobo2026_ros2_rp/can_ps4_node.cpp が bt_data(=buttons[0..7]) を実PS4パッドのボタン配置
-# （×○△□L1 R1 L2 R2）としてそのまま解釈するため、ここもそのビット位置に合わせる
-# （can_ps4_node.cpp 側は一切変更しない前提）。
+# 本コントローラ(スマホ)の基本経路は torobo2026_ros2_rp/pscon_node.cpp → can_node.cpp。
+# can_node.cpp が bt_data(=buttons[0..7]) をXbox系パッドのボタン配置（A B X Y LB RB LT）として
+# そのまま解釈するため、ここもそのビット位置に合わせる（can_node.cpp 側は一切変更しない前提）。
+# なお ps4con_node.cpp/can_ps4_node.cpp という別ノード一式もあるが、これは実PS4パッド直挿し時の
+# 非常用バックアップ経路(×○△□L1 R1 L2 R2配置)で、本コントローラの経路とは別物（詳細は
+# firmware/CAN_COMMAND_SPEC.md）。
+# 旧id(arm_stow/launch_to_intake/gate/checkpoint)はcan_ps4_node.cppのボタン配置に引きずられた古い
+# ラベルで、can_node.cpp側の実際の割り当てと一致しなくなっていたため、2026/8時点の実態に合わせて修正した。
+# index7(RT)はLidar位置補正のホールド操作に割り当て。ホールド中はUI側がBUTTON_PULSE_Sより短い
+# 間隔で'lidar_correct'を送り続けてパルスを継続更新することで「押している間だけ有効」を実現する
+# （can_node.cpp側もbt_dataのbit7を読むたびに判定するホールド式なので、この仕組みと相性が良い）。
 COMMAND_BUTTON_MAP = {
     'release_suction': 0,  # A: 吸引切る(設置)
     'intake': 1,           # B: 回収
-    'arm_stow': 2,         # RT: アーム収納
-    'arm_start': 3,        # X: スタート初期移動
-    'launch_to_intake': 4, # L1: ベル直設置→回収
-    'gate': 5,             # R1: 城門設置高さ
-    'descend_adjust': 6,   # L2: 降下微調整
-    'checkpoint': 7,       # R2: 関所設置高さ
+    'launch': 2,           # Y: 射出
+    'arm_start': 3,        # X: 初期(リセット)
+    'arm_force_stop': 4,   # LB: アーム移動強制ストップ
+    'manual_adjust': 5,    # RB: 手動位置調整(ベル直位置調整)
+    'descend_adjust': 6,   # LT: 降下微調整
+    'lidar_correct': 7,    # RT: ボール回収位置補正起動(ホールド中のみ有効)
 }
 # 十字キー -> axes index（pscon_node.cpp側の実PS4パッドaxes[0..3]配置に合わせる）
 DPAD_AXIS_MAP = {
@@ -74,9 +82,10 @@ BUTTON_PULSE_S = 0.15
 class CmdVelToJoyNode(Node):
     """/cmd_vel(Twist,軸) と /robot/command(String,ボタン) をマージして /joy を20Hz固定で publish する。
 
-    buttons[0..7] は /robot/command 由来のエッジパルス（実PS4パッドのボタン配置×○△□L1 R1 L2 R2に
-    対応する定型アーム動作。COMMAND_BUTTON_MAP参照）。can_ps4_node.cpp 側のプロトコルに合わせているため、
-    射出・手動ジョグ・吸着トグルはこの経路には無い（実PS4パイプライン側が未実装のため今回は対象外）。
+    buttons[0..7] は /robot/command 由来のエッジパルス（実Xbox系パッドのボタン配置A B X Y LB RB LTに
+    対応する定型アーム動作。COMMAND_BUTTON_MAP参照）。can_node.cpp 側のプロトコルに合わせている。
+    射出・手動位置調整はY/RBとして実装済み。十字キー4方向(DPAD_AXIS_MAP)はcan_node.cppのcross_data
+    判定（ベル直設置/2個めボール置き場/城門設置高さ/関所設置高さ）に対応する。
 
     安全ゲート:
       - デッドマン: 最後の /cmd_vel から DEADMAN_TIMEOUT_S 秒を超えたら停止
