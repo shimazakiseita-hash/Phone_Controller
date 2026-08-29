@@ -156,9 +156,13 @@
   .cmdSection{display:flex;flex-direction:column;gap:6px}
   .cmdSecLbl{margin-bottom:0}
   .cmdGrid{display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(60px,auto);gap:8px}
-  .cmdBtn{font-weight:800;border-radius:12px;border:none;text-align:center;line-height:1.3;font-size:16px;min-height:60px}
+  .cmdBtn{font-weight:800;border-radius:12px;border:none;text-align:center;line-height:1.3;font-size:16px;min-height:60px;
+    transition:box-shadow .38s ease, filter .38s ease, transform .15s ease}
   .cmdBtn:active{filter:brightness(.85);transform:translateY(1px)}
   .cmdBtn.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
+  /* 押した瞬間の強調。flash付与で即座に強調→JSがclassを外すと上のtransitionでフェードして戻る
+     （タップが一瞬でも約0.4秒見える。reduced-motionでもclass付与中は静的に強調される） */
+  .cmdBtn.flash{box-shadow:0 0 0 4px var(--warn); filter:brightness(1.35); transform:scale(1.03); transition:none}
   .cmdIcon{display:block;font-size:1.2em;line-height:1;margin-bottom:2px}
   .armGrid .cmdBtn{font-size:18px;font-weight:900;min-height:76px}
   .bellGrid{grid-template-columns:1fr}
@@ -651,6 +655,7 @@ function bindHoldButton(el, id){
   ['pointerup','pointercancel','pointerleave'].forEach(evt=>el.addEventListener(evt, stop));
 }
 const cmdGridBoxByGroup={drive:driveGridBox, arm:$('#cmdGridArm'), bell:$('#cmdGridBell'), dpad:$('#cmdGridDpad')};
+const cmdBtnById={};   // command id -> 画面ボタン要素（flash() が押下フィードバックで参照）
 CFG.commands.forEach(c=>{
   if(c.screen===false) return;
   const box=cmdGridBoxByGroup[c.group]; if(!box) return;
@@ -658,6 +663,7 @@ CFG.commands.forEach(c=>{
   b.style.background=c.color; b.style.color=c.colorFg;
   b.innerHTML = c.icon ? `<span class="cmdIcon">${c.icon}</span>${c.label}` : c.label;
   if(c.hold){ bindHoldButton(b, c.id); } else { b.onclick=()=>sendCommand(c.id); }
+  cmdBtnById[c.id]=b;
   box.appendChild(b);
 });
 
@@ -1080,7 +1086,14 @@ function sendCommand(id){
   flash(id);
   if(connected && !demo() && cmdStr) cmdStr.publish(new ROSLIB.Message({data:id}));
 }
-function flash(id){ /* 視覚フィードバックは押下時のCSSで処理 */ }
+function flash(id){
+  // 押した瞬間に対応ボタンを一瞬強調する（スマホでは:activeが一瞬すぎて分かりにくいため）
+  const el=cmdBtnById[id];
+  if(!el || el.classList.contains('on')) return;   // ホールド中(Lidar補正)は.onの黄色で足りるのでスキップ
+  el.classList.add('flash');
+  clearTimeout(el._flashT);
+  el._flashT=setTimeout(()=>el.classList.remove('flash'), 380);
+}
 
 // ===== 送出ループ（ハートビート兼）=====
 setInterval(()=>{
