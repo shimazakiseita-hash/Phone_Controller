@@ -172,6 +172,20 @@
     .bellGrid .cmdBtn{font-size:12px}
     .dpadGrid .cmdIcon{font-size:1em}
   }
+
+  /* PIDゲイン調整パネル(開閉式)。普段は閉じておき、チューニング時だけ開く想定なので
+     flex:1のcmdPanelを圧迫しないようflex指定なし(summaryだけの高さで収まる) */
+  #gainPanel{flex:none;padding:8px 10px;margin-top:8px}
+  #gainPanel summary{cursor:pointer;font-size:12px;color:var(--muted);list-style:none}
+  #gainPanel summary::-webkit-details-marker{display:none}
+  #gainPanel summary::before{content:"▸ ";color:var(--muted)}
+  #gainPanel[open] summary::before{content:"▾ "}
+  .gainBody{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+  .gainRow{display:flex;align-items:center;gap:8px}
+  .gainRow .gainLbl{flex:0 0 34px;font-size:12px;color:var(--muted)}
+  .gainRow input[type=range]{flex:1;accent-color:var(--warn)}
+  .gainRow .gainVal{flex:0 0 44px;text-align:right;font-family:var(--mono);font-size:12px}
+  #gainSignToggle{align-self:flex-start}
 </style>
 </head>
 <body>
@@ -229,14 +243,14 @@
           <label class="switch" style="margin-left:4px"><input type="checkbox" id="trailToggle" checked>軌跡</label>
         </div>
       </div>
-      <div class="row" id="navRow" style="justify-content:space-between;margin-bottom:6px">
+      <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
+      <div class="row" id="navRow" style="justify-content:space-between;margin:6px 0 0">
         <span class="pill mono" id="navMode">モード: 手動</span>
         <div class="row" style="gap:6px">
-          <button id="resetPose">初期位置合わせ</button>
+          <button id="resetPose">初期位置</button>
           <button id="goalCancel">移動キャンセル</button>
         </div>
       </div>
-      <div id="fieldCanvasBox"><canvas id="fieldCanvas"></canvas></div>
       <div class="hint" id="tapHint" style="text-align:left;margin-top:4px">タップで目標地点へ移動指示（/robot/goal）</div>
       <div class="hint" id="qualityHint" style="display:none;text-align:left;margin-top:4px">
         自己位置の信頼度低下: <span id="qualityVal" class="mono">--</span>
@@ -264,6 +278,10 @@
       <div class="cmdGrid bellGrid" id="cmdGridBell"></div>
     </div>
   </div>
+  <details class="panel" id="gainPanel">
+    <summary>直進補正PIDゲイン調整</summary>
+    <div class="gainBody" id="gainBody"></div>
+  </details>
 </div>
 </div><!-- /#scrollarea -->
 
@@ -282,6 +300,7 @@ const CFG = {
   goalCancelTopic: '/robot/goal_cancel',    messageBool: 'std_msgs/msg/Bool',
   resetPoseTopic:  '/robot/reset_pose',     messageEmpty: 'std_msgs/msg/Empty',
   navStateTopic:   '/robot/nav_state',      // std_msgs/String。'manual' / 'auto'
+  pidGainTopic:    '/robot/pid_gain',       messageFloat32MultiArray: 'std_msgs/msg/Float32MultiArray',
   rateHz: 20,                               // コマンド送出レート（=デッドマンのハートビート）
   maxLin: 1.0, maxAng: 1.0,                 // 正規化スティック→m/s, rad/s の倍率
   // 全機構コマンド（実Xbox系パッドのボタン配置A B X Y LB RB LTに1:1で対応させ、can_node.cpp
@@ -412,7 +431,7 @@ const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 let ros=null, connected=false;
 let drive={x:0,y:0,wz:0}, lastTelem=0, pubCount=0;
-let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null;
+let cmdVel=null, cmdStr=null, telem=null, goalPub=null, goalCancelPub=null, navState=null, resetPosePub=null, gainPub=null;
 let lastPose=null, poseHistory=[], lastQuality=null;   // フィールドマップ用。setTeam()の初期描画より前に宣言必須
 let goalField=null, goalActive=false, navMode='manual';   // 移動コマンドB（自陣タップ→goal）用
 const demo=()=>$('#demo').checked;
@@ -623,6 +642,42 @@ CFG.commands.forEach(c=>{
   if(c.hold){ bindHoldButton(b, c.id); } else { b.onclick=()=>sendCommand(c.id); }
   box.appendChild(b);
 });
+
+// ===== 直進補正PIDゲイン調整（②操縦ページ下部、開閉式）=====
+// /robot/pid_gain (Float32MultiArray, data=[gain_index, value]) をcan_nodeが直接購読しCAN送信する。
+// RAMのみの反映(STM32電源OFFでf446re_motor_run/main.cの初期値に戻る)。
+// gain_index: 0=Kp 1=Ki 2=Kd 3=補正上限(CORR_MAX) 4=符号(SIGN)。値はSTM32側の初期値に合わせてある。
+const GAIN_DEFS = [
+  {idx:0, label:'Kp', min:0,   max:60, step:0.5, def:30},
+  {idx:1, label:'Ki', min:0,   max:20, step:0.5, def:6},
+  {idx:2, label:'Kd', min:0,   max:10, step:0.2, def:2},
+  {idx:3, label:'上限', min:0, max:50, step:1,   def:25},
+];
+function sendGain(idx, value){
+  if(demo() || !connected || !gainPub) return;
+  gainPub.publish(new ROSLIB.Message({data:[idx, value]}));
+}
+const gainBodyBox=$('#gainBody');
+GAIN_DEFS.forEach(g=>{
+  const row=document.createElement('div'); row.className='gainRow';
+  const lbl=document.createElement('span'); lbl.className='gainLbl'; lbl.textContent=g.label;
+  const input=document.createElement('input'); input.type='range';
+  input.min=g.min; input.max=g.max; input.step=g.step; input.value=g.def;
+  const val=document.createElement('span'); val.className='gainVal mono'; val.textContent=g.def.toFixed(1);
+  input.oninput=()=>{ const v=parseFloat(input.value); val.textContent=v.toFixed(1); sendGain(g.idx, v); };
+  row.append(lbl, input, val);
+  gainBodyBox.appendChild(row);
+});
+let gainSign=1;
+const gainSignBtn=document.createElement('button'); gainSignBtn.type='button';
+gainSignBtn.id='gainSignToggle'; gainSignBtn.className='cmdBtn';
+gainSignBtn.textContent='符号: +';
+gainSignBtn.onclick=()=>{
+  gainSign = gainSign===1 ? -1 : 1;
+  gainSignBtn.textContent = '符号: ' + (gainSign===1?'+':'-');
+  sendGain(4, gainSign);
+};
+gainBodyBox.appendChild(gainSignBtn);
 
 // ===== フィールドマップ（常時表示。パッド接続中はタッチスティックを隠しこちらが主表示）=====
 // pose(推定側の座標系, rad) → フィールド座標(m, 原点左下)。CFG.teams[team].poseToField で機体/座標規約を吸収
@@ -931,6 +986,7 @@ function connect(){
     goalPub=new ROSLIB.Topic({ros,name:CFG.goalTopic,messageType:CFG.messagePoseStamped});
     goalCancelPub=new ROSLIB.Topic({ros,name:CFG.goalCancelTopic,messageType:CFG.messageBool});
     resetPosePub=new ROSLIB.Topic({ros,name:CFG.resetPoseTopic,messageType:CFG.messageEmpty});
+    gainPub=new ROSLIB.Topic({ros,name:CFG.pidGainTopic,messageType:CFG.messageFloat32MultiArray});
     navState=new ROSLIB.Topic({ros,name:CFG.navStateTopic,messageType:CFG.messageString});
     navState.subscribe(m=>{
       if(m.data!=='manual' && m.data!=='auto') return;
