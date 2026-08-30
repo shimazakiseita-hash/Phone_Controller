@@ -197,6 +197,22 @@
   .gainRow input[type=range]{flex:1;accent-color:var(--warn)}
   .gainRow .gainVal{flex:0 0 44px;text-align:right;font-family:var(--mono);font-size:12px}
   #gainSignToggle{align-self:flex-start}
+
+  /* ③試合用ページ: 試合中に頻繁に切り替える足回りの速度2段階・逆転と、コントローラのボタン配置画像。
+     ②操縦ページの速度/逆転ボタンと speedLevel/driveReversed を共有する（どちらで押しても両方光る）。 */
+  #page3{min-height:auto;display:flex;flex-direction:column;gap:10px}
+  #matchPanel{display:flex;flex-direction:column;gap:14px}
+  #cmdGridSpeed3{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(84px,auto)}
+  #cmdGridReverse3{grid-template-columns:1fr;grid-auto-rows:minmax(84px,auto)}
+  #matchPanel .cmdBtn{font-size:19px;font-weight:900}
+  #usageWrap3{display:flex;flex-direction:column;gap:6px}
+  #usageImg3{width:100%;max-height:42vh;object-fit:contain;border-radius:8px;cursor:zoom-in;
+    background:var(--panel2);border:1px solid var(--line)}
+  @media (orientation:landscape){
+    #page3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);align-items:start}
+    #cmdGridSpeed3,#cmdGridReverse3{grid-auto-rows:minmax(64px,auto)}
+    #usageImg3{max-height:56vh}
+  }
 </style>
 </head>
 <body>
@@ -215,6 +231,7 @@
 <div class="row" id="pageSwitch">
   <button id="pageTab1" class="pagetab active">① タスク</button>
   <button id="pageTab2" class="pagetab">② 操縦</button>
+  <button id="pageTab3" class="pagetab">③ 試合用</button>
 </div>
 
 <div class="layout" id="page1">
@@ -297,6 +314,23 @@
     <summary>直進補正PIDゲイン調整</summary>
     <div class="gainBody" id="gainBody"></div>
   </details>
+</div>
+
+<div id="page3" hidden>
+  <div class="panel" id="matchPanel">
+    <div class="cmdSection">
+      <div class="lbl cmdSecLbl">足回り 速度</div>
+      <div class="cmdGrid" id="cmdGridSpeed3"></div>
+    </div>
+    <div class="cmdSection">
+      <div class="lbl cmdSecLbl">足回り 逆転</div>
+      <div class="cmdGrid" id="cmdGridReverse3"></div>
+    </div>
+  </div>
+  <div class="panel" id="usageWrap3">
+    <div class="lbl cmdSecLbl">コントローラ ボタン配置</div>
+    <img src="./con_image.jpg" alt="コントローラ操作説明" id="usageImg3">
+  </div>
 </div>
 </div><!-- /#scrollarea -->
 
@@ -600,21 +634,24 @@ addEventListener('gamepaddisconnected',()=>{
   gpadActive=false; drive={x:0,y:0,wz:0};
 });
 
-// ===== ページ切り替え（①タスク管理／②操縦。物理コントローラが無くても②だけで操縦できるようにする）=====
+// ===== ページ切り替え（①タスク管理／②操縦／③試合用。②だけでも一通り操縦できるようにする）=====
 function showPage(n){
   $('#page1').hidden = n!==1;
   $('#page2').hidden = n!==2;
+  $('#page3').hidden = n!==3;
   $('#pageTab1').classList.toggle('active', n===1);
   $('#pageTab2').classList.toggle('active', n===2);
+  $('#pageTab3').classList.toggle('active', n===3);
   $('#taskActionBar').style.display = n===1 ? '' : 'none';   // 実行/次へは①のタスク専用
 }
 $('#pageTab1').onclick=()=>showPage(1);
 $('#pageTab2').onclick=()=>showPage(2);
+$('#pageTab3').onclick=()=>showPage(3);
 showPage(1);
 
-// ===== 速度2段階・足回り逆転トグル（②操縦ページ。パッド操作にも共通で効く。送出ループで適用）=====
-// driveGrid内で位置調整ボタン(CFG.commandsのgroup:'drive')と2x2で揃うよう、
-// 先にこの2つを追加してから下のCFG.commandsループで残り(位置調整)を追加する（DOM順=表示順）。
+// ===== 速度2段階・足回り逆転トグル（②操縦・③試合用ページ共通。パッド操作にも効く。送出ループで適用）=====
+// speedLevel/driveReversed は1組だけ。②と③の両方にボタンを置き、どちらで押しても
+// renderSpeedButtons()/renderReverse() が全ボタン（両ページ）の点灯を揃える。
 // 倍率は仮置き。実機で走らせながら調整する。
 const SPEED_LEVELS = [
   {label:'低速', scale:0.5},
@@ -622,24 +659,26 @@ const SPEED_LEVELS = [
 ];
 let speedLevel=1, driveReversed=false;   // 起動時は高速(等速)から
 const driveGridBox=$('#cmdGridDrive');
-SPEED_LEVELS.forEach((s,i)=>{
-  const b=document.createElement('button'); b.type='button'; b.className='cmdBtn speedBtn';
-  b.textContent=s.label;
-  b.onclick=()=>{ speedLevel=i; renderSpeedButtons(); };
-  driveGridBox.appendChild(b);
-});
-function renderSpeedButtons(){
-  $$('#cmdGridDrive .speedBtn').forEach((b,i)=>b.classList.toggle('on', i===speedLevel));
+function renderSpeedButtons(){ $$('.speedBtn').forEach(b=>b.classList.toggle('on', Number(b.dataset.lvl)===speedLevel)); }
+function renderReverse(){ $$('.revBtn').forEach(b=>b.classList.toggle('on', driveReversed)); }
+// 速度2段階＋逆転のボタン一式を、指定の速度ボックス・逆転ボックスに生成する
+function buildDriveControls(speedBox, revBox){
+  SPEED_LEVELS.forEach((s,i)=>{
+    const b=document.createElement('button'); b.type='button'; b.className='cmdBtn speedBtn';
+    b.dataset.lvl=i; b.textContent=s.label;
+    b.onclick=()=>{ speedLevel=i; renderSpeedButtons(); };
+    speedBox.appendChild(b);
+  });
+  const r=document.createElement('button'); r.type='button'; r.className='cmdBtn revBtn';
+  r.textContent='逆転';
+  r.onclick=()=>{ driveReversed=!driveReversed; renderReverse(); };
+  revBox.appendChild(r);
 }
-renderSpeedButtons();
-const reverseBtn=document.createElement('button');
-reverseBtn.type='button'; reverseBtn.id='reverseToggle'; reverseBtn.className='cmdBtn';
-reverseBtn.textContent='逆転';
-reverseBtn.onclick=()=>{
-  driveReversed=!driveReversed;
-  reverseBtn.classList.toggle('on', driveReversed);
-};
-driveGridBox.appendChild(reverseBtn);
+// ②操縦: 足回りセクションに（低速/高速/逆転 → この後のCFG.commandsループでLidar補正が続き2x2になる）
+buildDriveControls(driveGridBox, driveGridBox);
+// ③試合用: 速度・逆転それぞれ専用グリッドに
+buildDriveControls($('#cmdGridSpeed3'), $('#cmdGridReverse3'));
+renderSpeedButtons(); renderReverse();
 
 // ===== 機構コマンドボタン（②操縦ページ。CFG.commandsのgroupごとに分けて描画し、意味のまとまり・
 // 使用頻度に応じたサイズで表示する。パッドと同じsendCommand()を呼ぶので実際の動作は共通。
@@ -760,7 +799,7 @@ $('#trailToggle').onchange=()=>{ trailOn=$('#trailToggle').checked; drawField();
 
 // コントローラ操作画像: タップで全画面拡大、もう一度タップ(画像/背景/Esc)で戻す
 const usageZoom=$('#usageZoom');
-$('#usageImg').onclick=()=>{ usageZoom.hidden=false; };
+$$('#usageImg, #usageImg3').forEach(el=>{ el.onclick=()=>{ usageZoom.hidden=false; }; });
 usageZoom.onclick=()=>{ usageZoom.hidden=true; };
 addEventListener('keydown',e=>{ if(e.key==='Escape') usageZoom.hidden=true; });
 function setTeam(team){
