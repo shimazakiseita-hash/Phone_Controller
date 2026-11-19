@@ -26,6 +26,8 @@ ip -br addr show wlan0
 - [ ] IPアドレスを控えた（以下 `<PiのIP>`）
 
 ## 3. 起動（ラズパイ・ターミナル1）
+自動起動を有効にしている場合は手動 launch の代わりに、`systemctl status tudarobo` と `journalctl -u tudarobo -f` で状態・ログを確認する。
+
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/tudarbo2026_kitakamisanti_ros2/install/setup.bash

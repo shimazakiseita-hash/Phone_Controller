@@ -115,7 +115,7 @@ ros2 run can_node can_node
 ```
 
 launch は Web サーバーも8080番で起動するため、別の Web サーバーを重複起動しない。
-launch の配信元は `/home/ubuntu/Phone_Controller/web` 固定のため、ラズパイではこの場所に配置する。
+launch の配信元は既定で `~/Phone_Controller/web`。変更する場合は `bringup.launch.py` の `web_dir` 引数で指定する。
 
 ### スマホで接続・確認
 
@@ -135,6 +135,32 @@ ros2 topic hz /cmd_vel
 
 ブラウザ接続中の `/cmd_vel` が約20Hzであることを確認する。
 実機動作はチーム側の `can_node` の `can_T()` 呼び出しとSTM32側のCAN指令処理の修正後に確認し、それまでは `/pscon_data` で確認する。
+
+### 電源投入時の自動起動（systemd）
+
+ビルド完了後、以下で有効化する。
+
+```bash
+sudo cp ~/Phone_Controller/deploy/tudarobo.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now tudarobo
+```
+
+状態・ログの確認:
+
+```bash
+systemctl status tudarobo
+journalctl -u tudarobo -f
+```
+
+停止・無効化:
+
+```bash
+sudo systemctl stop tudarobo
+sudo systemctl disable tudarobo
+```
+
+自動起動中に手動で `ros2 launch` すると同じノードが二重起動するため、手動で動かすときは先に `sudo systemctl stop tudarobo` を実行する。
+リポジトリを更新・再ビルドしたら `sudo systemctl restart tudarobo` を実行する。
+ユーザー名が `ubuntu` 以外なら、ユニットファイルの `User` とパスを書き換える。
 
 ## 前提
 

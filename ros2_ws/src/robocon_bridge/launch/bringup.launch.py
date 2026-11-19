@@ -1,3 +1,5 @@
+import os
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition
@@ -9,6 +11,10 @@ def generate_launch_description():
     use_mock_arg = DeclareLaunchArgument('use_mock', default_value='false')
 
     robot_profile_arg = DeclareLaunchArgument('robot_profile', default_value='torobo')
+
+    web_dir_arg = DeclareLaunchArgument(
+        'web_dir', default_value=os.path.expanduser('~/Phone_Controller/web')
+    )
 
     rosbridge = Node(
         package='rosbridge_server',
@@ -42,7 +48,7 @@ def generate_launch_description():
 
     web_server = ExecuteProcess(
         cmd=['python3', '-m', 'http.server', '8080'],
-        cwd='/home/ubuntu/Phone_Controller/web',
+        cwd=LaunchConfiguration('web_dir'),
     )
 
-    return LaunchDescription([use_mock_arg, robot_profile_arg, rosbridge, mock, cmd_vel_to_joy, nav_node, web_server])
+    return LaunchDescription([use_mock_arg, robot_profile_arg, web_dir_arg, rosbridge, mock, cmd_vel_to_joy, nav_node, web_server])

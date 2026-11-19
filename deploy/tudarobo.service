@@ -1,0 +1,16 @@
+[Unit]
+Description=tudarobo phone controller (rosbridge + cmd_vel_to_joy + pscon_node + can_node)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+ExecStart=/home/ubuntu/Phone_Controller/deploy/tudarobo-start.sh
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
