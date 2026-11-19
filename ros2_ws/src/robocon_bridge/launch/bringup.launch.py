@@ -8,6 +8,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_mock_arg = DeclareLaunchArgument('use_mock', default_value='false')
 
+    robot_profile_arg = DeclareLaunchArgument('robot_profile', default_value='torobo')
+
     rosbridge = Node(
         package='rosbridge_server',
         executable='rosbridge_websocket',
@@ -27,6 +29,7 @@ def generate_launch_description():
         package='robocon_bridge',
         executable='cmd_vel_to_joy',
         name='cmd_vel_to_joy',
+        parameters=[{'robot_profile': LaunchConfiguration('robot_profile')}],
         output='screen',
     )
 
@@ -42,4 +45,4 @@ def generate_launch_description():
         cwd='/home/ubuntu/Phone_Controller/web',
     )
 
-    return LaunchDescription([use_mock_arg, rosbridge, mock, cmd_vel_to_joy, nav_node, web_server])
+    return LaunchDescription([use_mock_arg, robot_profile_arg, rosbridge, mock, cmd_vel_to_joy, nav_node, web_server])

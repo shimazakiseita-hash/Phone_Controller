@@ -72,6 +72,62 @@ cd ~/Phone_Controller/web && python3 -m http.server 8080
 
 `http://10.152.79.144:8080/robot-console.html` を開く → 「接続」を押す → ●が緑になればOK
 
+## tudarobo 試合用コントローラ起動方法（実機／ラズパイ）
+
+### ビルド
+
+```bash
+source /opt/ros/jazzy/setup.bash
+cd ~/tudarbo2026_kitakamisanti_ros2
+colcon build
+
+cd ~/Phone_Controller/ros2_ws
+colcon build --packages-select robocon_bridge
+```
+
+### ソース（新しいターミナルを開くたびに実行）
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/tudarbo2026_kitakamisanti_ros2/install/setup.bash
+source ~/Phone_Controller/ros2_ws/install/setup.bash
+```
+
+### ノード起動（ターミナルを分けて実行）
+
+```bash
+# ターミナル1: rosbridge + cmd_vel_to_joy + Webサーバー
+ros2 launch robocon_bridge bringup.launch.py robot_profile:=tudarobo
+
+# ターミナル2: /joy → pscon_data 変換
+ros2 run pscon_node pscon_node
+
+# ターミナル3: pscon_data → SPI/CAN 送信
+ros2 run can_node can_node
+```
+
+launch は Web サーバーも8080番で起動するため、別の Web サーバーを重複起動しない。
+launch の配信元は `/home/ubuntu/Phone_Controller/web` 固定のため、ラズパイではこの場所に配置する。
+
+### スマホで接続・確認
+
+スマホとPiを同じWi-Fiに接続し、`http://<PiのIP>:8080/tudarobo-console.html` を開く。
+接続先を `ws://<PiのIP>:9090` に合わせて「接続」を押す。
+
+起動時は高速・逆転オフ。低速は倍率0.5、高速は1.0。逆転は並進だけに適用される。
+高速で旋回入力の絶対値が0.75以上になると高速旋回になり、低速モードでは倒し切っても低速旋回になる。
+ゲームパッドを切断するとゼロ速度を20Hzで送り続ける。
+
+確認用（上記source後、別ターミナル）:
+
+```bash
+ros2 topic echo /pscon_data
+ros2 topic hz /cmd_vel
+```
+
+ブラウザ接続中の `/cmd_vel` が約20Hzであることを確認する。
+実機動作はチーム側の `can_node` の `can_T()` 呼び出しとSTM32側のCAN指令処理の修正後に確認し、それまでは `/pscon_data` で確認する。
+
 ## 前提
 
 - ROS2 Jazzy（Ubuntu 24.04）

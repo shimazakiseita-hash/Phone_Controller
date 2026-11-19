@@ -21,6 +21,12 @@ AXIS_CROSS_BT = 6
 AXIS_CROSS_BT_MAG = 7
 
 TURN_DEADZONE = 0.1
+TUDAROBO_TURN_FAST_THRESHOLD = 0.75
+
+
+def tudarobo_turn_fast(angular_z: float) -> bool:
+    return abs(angular_z) > TURN_DEADZONE and abs(angular_z) >= TUDAROBO_TURN_FAST_THRESHOLD
+
 
 # デッドマン: 最後に /cmd_vel を受信してからこの秒数を超えたら停止（axes/buttons全0）とみなす
 DEADMAN_TIMEOUT_S = 0.2
@@ -98,6 +104,10 @@ class CmdVelToJoyNode(Node):
 
     def __init__(self):
         super().__init__('cmd_vel_to_joy')
+        self._robot_profile = self.declare_parameter('robot_profile', 'torobo').value
+        if self._robot_profile not in ('torobo', 'tudarobo'):
+            self.get_logger().warn(f'unknown robot_profile: {self._robot_profile!r}; using torobo')
+            self._robot_profile = 'torobo'
         self._joy_pub = self.create_publisher(Joy, '/joy', 10)
         self._sequence_pub = self.create_publisher(UInt8, '/sequence', 10) #シーケンス用
         self.create_subscription(Twist, '/cmd_vel', self._on_cmd_vel, 10)
@@ -167,6 +177,9 @@ class CmdVelToJoyNode(Node):
             for idx, until in self._pulse_until.items():
                 if now < until:
                     buttons[idx] = 1
+
+            if self._robot_profile == 'tudarobo' and tudarobo_turn_fast(self._last_cmd.angular.z):
+                buttons[7] = 1
 
         joy = Joy()
         joy.header.stamp = self.get_clock().now().to_msg()
