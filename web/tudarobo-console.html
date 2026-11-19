@@ -19,6 +19,9 @@ button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(-
 button.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
 .dot{width:14px;height:14px;border-radius:50%;background:var(--bad);flex:none;box-shadow:0 0 0 3px rgba(226,80,63,.15)}
 #conn.on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,184,154,.18)}
+#gamepad.on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,184,154,.18)}
+#gamepadState{display:flex;align-items:center;gap:10px;font-size:14px}
+#gamepadValues{margin-top:10px;font:14px monospace;white-space:pre-wrap}
 .dot.warn{background:var(--warn)}
 #rate{color:var(--muted);font:13px monospace;white-space:nowrap}
 #connStatus{flex-basis:100%;font-size:12px;color:var(--muted)}
@@ -35,6 +38,11 @@ p{font-size:14px;line-height:1.8;margin:0}
 <span class="dot" aria-hidden="true"></span><span id="rate">0 Hz</span>
 <span id="connStatus" role="status">未接続</span>
 </div>
+<section id="gamepad" class="panel">
+<h2>ゲームパッド</h2>
+<div id="gamepadState"><span class="dot" aria-hidden="true"></span><span id="gamepadStatus" role="status">未検出（ボタンを押すと認識されます）</span></div>
+<p id="gamepadValues">前後 0.00 / 左右 0.00 / 旋回 0.00</p>
+</section>
 <section class="panel">
 <h2>足回り 速度</h2>
 <div class="controls"><button id="fast" type="button">高速</button><button id="slow" type="button">低速</button></div>
@@ -72,6 +80,7 @@ function axisVal(gp,index){
 function pollGamepad(){
   const gp=Array.from(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g && g.connected);
   drive=gp ? {x:axisVal(gp,1),y:axisVal(gp,0),wz:axisVal(gp,2)} : {x:0,y:0,wz:0};
+  return gp;
 }
 addEventListener('gamepadconnected',pollGamepad);
 addEventListener('gamepaddisconnected',()=>{drive={x:0,y:0,wz:0};});
@@ -130,13 +139,17 @@ $('#btnConn').onclick=()=>{
   wantConnected=true;updateConnBtn();connect();
 };
 setInterval(()=>{
-  pollGamepad();
+  const gp=pollGamepad();
   const rev=driveReversed?-1:1;
+  const velocity={
+    linear:{x:drive.x*CFG.maxLin*scale*rev,y:drive.y*CFG.maxLin*scale*rev,z:0},
+    angular:{x:0,y:0,z:drive.wz*CFG.maxAng*scale}
+  };
+  $('#gamepad').classList.toggle('on',!!gp);
+  $('#gamepadStatus').textContent=gp?'接続中':'未検出（ボタンを押すと認識されます）';
+  $('#gamepadValues').textContent=`前後 ${velocity.linear.x.toFixed(2)} / 左右 ${velocity.linear.y.toFixed(2)} / 旋回 ${velocity.angular.z.toFixed(2)}`;
   if(connected && cmdVel){
-    cmdVel.publish(new ROSLIB.Message({
-      linear:{x:drive.x*CFG.maxLin*scale*rev,y:drive.y*CFG.maxLin*scale*rev,z:0},
-      angular:{x:0,y:0,z:drive.wz*CFG.maxAng*scale}
-    }));
+    cmdVel.publish(new ROSLIB.Message(velocity));
     pubCount++;
   }
 },1000/CFG.rateHz);
