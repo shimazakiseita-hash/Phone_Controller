@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>tudarobo 試合用コントローラ</title>
 <script src="./roslib.min.js"></script>
@@ -11,13 +11,14 @@
 :root{--bg:#0d1316;--panel:#151d22;--panel2:#1b252b;--line:#26333a;--txt:#e6eaec;--muted:#8a969c;--ok:#3fb89a;--warn:#efa23a;--bad:#e2503f}
 *{box-sizing:border-box}
 body{touch-action:manipulation;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Helvetica Neue",sans-serif}
-main{max-width:560px;margin:auto;padding:16px;display:grid;gap:16px}
+main{max-width:560px;margin:auto;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));display:grid;gap:16px}
 h1{font-size:20px;margin:4px 0}h2{font-size:14px;color:var(--muted);margin:0 0 12px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
 #conn{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 #url{-webkit-user-select:text;user-select:text;flex:1;min-width:130px;width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:monospace;font-size:13px}
 button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:8px;padding:12px;cursor:pointer;touch-action:manipulation}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.controls button{min-height:64px;font-size:20px;font-weight:600}
+.speed-controls{grid-template-columns:repeat(3,1fr)}
 button.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
 .dot{width:14px;height:14px;border-radius:50%;background:var(--bad);flex:none;box-shadow:0 0 0 3px rgba(226,80,63,.15)}
 #conn.on .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(63,184,154,.18)}
@@ -29,6 +30,29 @@ button.on{background:var(--warn);color:#3a2400;border-color:var(--warn)}
 #connStatus,#noSleepStatus{flex-basis:100%;font-size:12px;color:var(--muted)}
 #connStatus.ok{color:var(--ok)}#connStatus.warn{color:var(--warn)}#connStatus.bad{color:var(--bad)}
 p{font-size:14px;line-height:1.8;margin:0}
+@media (orientation: landscape){
+  main{max-width:none;height:100vh;height:100dvh;padding:calc(6px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left));grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:repeat(6,minmax(0,1fr));gap:6px}
+  h1{display:none}
+  .panel{min-width:0;padding:6px;border-radius:8px}
+  #conn{grid-column:1;grid-row:1 / 3;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:3px 6px}
+  #url{min-width:0;padding:5px;font-size:11px}
+  #btnConn{padding:5px 8px;font-size:12px}
+  #connStatus,#noSleepStatus{grid-column:1 / -1;font-size:10px;line-height:1.2}
+  #noSleepStatus{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rate{font-size:10px}
+  .dot{width:10px;height:10px}
+  #gamepad{grid-column:1;grid-row:3 / 5}
+  #speed{grid-column:2;grid-row:1 / 4}
+  #direction{grid-column:2;grid-row:4 / 7}
+  #help{grid-column:1;grid-row:5 / 7}
+  h2{font-size:11px;margin-bottom:5px}
+  #gamepadState{gap:6px;font-size:11px}
+  #gamepadValues{margin-top:5px;font-size:11px}
+  p{font-size:11px;line-height:1.4}
+  #speed,#direction{display:flex;flex-direction:column}
+  .controls{flex:1;min-height:0;gap:6px}
+  .controls button{min-height:clamp(36px,22vh,64px);min-height:clamp(36px,22dvh,64px);padding:6px;font-size:18px}
+}
 </style>
 </head>
 <body>
@@ -46,15 +70,15 @@ p{font-size:14px;line-height:1.8;margin:0}
 <div id="gamepadState"><span class="dot" aria-hidden="true"></span><span id="gamepadStatus" role="status">未検出（ボタンを押すと認識されます）</span></div>
 <p id="gamepadValues">前後 0.00 / 左右 0.00 / 旋回 0.00</p>
 </section>
-<section class="panel">
+<section id="speed" class="panel">
 <h2>足回り 速度</h2>
-<div class="controls"><button id="fast" type="button">高速</button><button id="slow" type="button">低速</button></div>
+<div class="controls speed-controls"><button id="fast" type="button">高速</button><button id="mid" type="button">中速</button><button id="slow" type="button">低速</button></div>
 </section>
-<section class="panel">
+<section id="direction" class="panel">
 <h2>足回り 逆転</h2>
 <div class="controls"><button id="normal" type="button">通常</button><button id="reverse" type="button">逆転</button></div>
 </section>
-<section class="panel"><h2>操作説明</h2><p>左スティック: 移動 / 右スティック左右: 旋回 / 高速で旋回を倒し切ると高速旋回</p></section>
+<section id="help" class="panel"><h2>操作説明</h2><p>左スティック: 移動 / 右スティック左右: 旋回 / 高速で旋回を倒し切ると高速旋回</p></section>
 </main>
 <script>
 'use strict';
@@ -67,13 +91,14 @@ let hadConnection=false, reconnectTimer=null, connAttempt=0, pubCount=0;
 let scale=1.0, driveReversed=false, drive={x:0,y:0,wz:0};
 
 function renderControls(){
-  for(const [id,on] of [['fast',scale===1.0],['slow',scale===0.5],['normal',!driveReversed],['reverse',driveReversed]]){
+  for(const [id,on] of [['fast',scale===1.0],['mid',scale===0.7],['slow',scale===0.4],['normal',!driveReversed],['reverse',driveReversed]]){
     $('#'+id).classList.toggle('on',on);
     $('#'+id).setAttribute('aria-pressed',String(on));
   }
 }
 $('#fast').onclick=()=>{scale=1.0;renderControls();};
-$('#slow').onclick=()=>{scale=0.5;renderControls();};
+$('#mid').onclick=()=>{scale=0.7;renderControls();};
+$('#slow').onclick=()=>{scale=0.4;renderControls();};
 $('#normal').onclick=()=>{driveReversed=false;renderControls();};
 $('#reverse').onclick=()=>{driveReversed=true;renderControls();};
 renderControls();
