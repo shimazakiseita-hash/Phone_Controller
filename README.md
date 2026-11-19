@@ -93,7 +93,15 @@ source ~/tudarbo2026_kitakamisanti_ros2/install/setup.bash
 source ~/Phone_Controller/ros2_ws/install/setup.bash
 ```
 
-### ノード起動（ターミナルを分けて実行）
+### ノード起動
+
+上記のソース手順を必ず実行してから、1つのターミナルで起動する。
+
+```bash
+ros2 launch robocon_bridge tudarobo.launch.py
+```
+
+個別に起動する場合（各ターミナルで上記のソース手順を実行）:
 
 ```bash
 # ターミナル1: rosbridge + cmd_vel_to_joy + Webサーバー
