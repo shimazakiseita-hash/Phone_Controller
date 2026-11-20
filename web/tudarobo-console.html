@@ -83,6 +83,11 @@ p{font-size:14px;line-height:1.8;margin:0}
 <script>
 'use strict';
 const $=s=>document.querySelector(s);
+// ページのホストを接続先に使い、IPv6 は角括弧で囲む。
+if(location.hostname){
+  const host=location.hostname.replace(/^\[|\]$/g,'');
+  $('#url').value=`ws://${host.includes(':')?'['+host+']':host}:9090`;
+}
 let noSleep=null;
 try{if(typeof NoSleep!=='undefined') noSleep=new NoSleep();}catch(e){}
 const CFG={rateHz:20,reconnectMs:3000,maxLin:1.0,maxAng:1.0,deadzone:0.08};
